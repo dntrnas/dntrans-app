@@ -113,6 +113,12 @@ def startup_event():
         db.commit()
     except:
         db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE challans ADD COLUMN apply_tds BOOLEAN DEFAULT TRUE"))
+        db.commit()
+    except:
+        db.rollback()
         
     users = [
         ("SuperAdmin", "Admin@123", "SuperAdmin"),
@@ -120,8 +126,16 @@ def startup_event():
         ("Nagendra Shukla", "Nagendra@123", "User")
     ]
     for u, p, r in users:
-        if not db.query(models.User).filter(models.User.username == u).first():
+        user = db.query(models.User).filter(models.User.username == u).first()
+        if not user:
             db.add(models.User(username=u, hashed_password=get_password_hash(p), role=r))
+        else:
+            # Enforce the correct password hash in case it was modified or corrupted
+            try:
+                if not verify_password(p, user.hashed_password):
+                    user.hashed_password = get_password_hash(p)
+            except:
+                user.hashed_password = get_password_hash(p)
     db.commit()
     db.close()
 
@@ -160,7 +174,7 @@ class BiltyCreate(BaseModel):
     is_fixed_rate: bool = False
     mazdoor_charges: float = 0.0
     sur_charges: float = 0.0
-    st_charges: float = 100.0
+    st_charges: float = 0.0
 
 class ChallanCreate(BaseModel):
     challan_no: str
@@ -264,8 +278,12 @@ def create_bilty(bilty: BiltyCreate, db: Session = Depends(get_db), user: models
     bilty_data['total_freight_charges'] = total_freight
     db_bilty = models.Bilty(**bilty_data)
     db.add(db_bilty)
-    db.commit()
-    db.refresh(db_bilty)
+    try:
+        db.commit()
+        db.refresh(db_bilty)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="LR Number already exists or database error.")
     return db_bilty
 
 @app.delete("/api/bilties/{bilty_id}")
@@ -441,6 +459,7 @@ def get_dashboard_analytics(db: Session = Depends(get_db), user: models.User = D
         net_exposure = unbilled + (billed - payments)
         if net_exposure > 0:
             outstanding_results.append({
+                "party_id": party.id,
                 "party_name": party.name,
                 "unbilled": unbilled,
                 "billed": billed - payments,
@@ -455,6 +474,7 @@ def get_dashboard_analytics(db: Session = Depends(get_db), user: models.User = D
             net_vendor_exposure = vendor_challans - vendor_payments
             if net_vendor_exposure > 0:
                 vendor_outstanding_results.append({
+                    "party_id": party.id,
                     "party_name": party.name,
                     "net": net_vendor_exposure
                 })
@@ -477,9 +497,125 @@ def get_dashboard_analytics(db: Session = Depends(get_db), user: models.User = D
         "revenue_labels": list(revenue_dict.keys()),
         "revenue_data": list(revenue_dict.values()),
         "total_revenue": total_revenue,
+        "total_expenses": total_expenses,
         "total_cost": total_cost,
         "net_revenue": net_revenue
     }
+
+@app.get("/api/parties/{party_id}/payments")
+def get_party_payments(party_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.Payment).filter(models.Payment.party_id == party_id).order_by(models.Payment.date.desc()).all()
+
+@app.get("/api/parties/{party_id}/vendor_payments")
+def get_vendor_payments(party_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.VendorPayment).filter(models.VendorPayment.vendor_id == party_id).order_by(models.VendorPayment.date.desc()).all()
+
+@app.get("/api/expenses")
+def get_expenses(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.Expense).order_by(models.Expense.date.desc()).all()
+
+@app.get("/api/parties/{party_id}/tally_ledger")
+def get_party_tally_ledger(party_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    party = db.query(models.Party).filter(models.Party.id == party_id).first()
+    if not party:
+        raise HTTPException(status_code=404, detail="Party not found")
+        
+    rows = []
+    
+    if party.party_type == 'Customer':
+        invoices = db.query(models.Invoice).filter(models.Invoice.party_id == party_id).all()
+        for inv in invoices:
+            rows.append({
+                "date": inv.date.isoformat(),
+                "vch_type": "Sales",
+                "vch_no": inv.bill_no,
+                "particulars": f"To Sales Invoice #{inv.bill_no}",
+                "debit": inv.net_amount,
+                "credit": 0.0
+            })
+            
+        unbilled = db.query(models.Bilty).filter(
+            ((models.Bilty.consignor_id == party_id) & (models.Bilty.gst_paid_by == 'CONSIGNOR')) |
+            ((models.Bilty.consignee_id == party_id) & (models.Bilty.gst_paid_by == 'CONSIGNEE'))
+        ).filter(models.Bilty.challan_id != None, models.Bilty.invoice_id == None).all()
+        for lr in unbilled:
+            rows.append({
+                "date": lr.date.isoformat(),
+                "vch_type": "Unbilled",
+                "vch_no": lr.lr_no,
+                "particulars": f"To Unbilled Freight (LR #{lr.lr_no} to {lr.destination})",
+                "debit": lr.total_freight_charges,
+                "credit": 0.0
+            })
+            
+        payments = db.query(models.Payment).filter(models.Payment.party_id == party_id).all()
+        for pay in payments:
+            inv_ref = ""
+            if pay.invoice_id:
+                inv = db.query(models.Invoice).filter(models.Invoice.id == pay.invoice_id).first()
+                if inv:
+                    inv_ref = f" (Agst Inv #{inv.bill_no})"
+            rows.append({
+                "date": pay.date.isoformat(),
+                "vch_type": "Receipt",
+                "vch_no": pay.utr_no or "-",
+                "particulars": f"By Bank/Cash Receipt{inv_ref}",
+                "debit": 0.0,
+                "credit": pay.amount_received
+            })
+            
+    elif party.party_type == 'Vendor':
+        challans = db.query(models.Challan).filter(models.Challan.vendor_id == party_id).all()
+        for ch in challans:
+            freight_after_tds = ch.total_freight - ch.tds_amount
+            rows.append({
+                "date": ch.date.isoformat(),
+                "vch_type": "Purchase",
+                "vch_no": ch.challan_no,
+                "particulars": f"By Lorry Hire (Challan #{ch.challan_no})",
+                "debit": 0.0,
+                "credit": freight_after_tds
+            })
+            if ch.advance_paid > 0:
+                rows.append({
+                    "date": ch.date.isoformat(),
+                    "vch_type": "Payment (Adv)",
+                    "vch_no": ch.challan_no,
+                    "particulars": f"To Advance Paid (Challan #{ch.challan_no})",
+                    "debit": ch.advance_paid,
+                    "credit": 0.0
+                })
+                
+        payments = db.query(models.VendorPayment).filter(models.VendorPayment.vendor_id == party_id).all()
+        for pay in payments:
+            ch_ref = ""
+            if pay.challan_id:
+                ch = db.query(models.Challan).filter(models.Challan.id == pay.challan_id).first()
+                if ch:
+                    ch_ref = f" (Agst Ch #{ch.challan_no})"
+            rows.append({
+                "date": pay.date.isoformat(),
+                "vch_type": "Payment",
+                "vch_no": pay.utr_no or "-",
+                "particulars": f"To Bank/Cash Payment{ch_ref}",
+                "debit": pay.amount_paid,
+                "credit": 0.0
+            })
+            
+    # Sort chronologically
+    rows.sort(key=lambda x: x['date'])
+    balance = 0.0
+    for r in rows:
+        if party.party_type == 'Customer':
+            balance += r['debit'] - r['credit']
+            r['balance_str'] = f"{abs(balance):.2f} {'Dr' if balance >= 0 else 'Cr'}"
+            r['balance'] = balance
+        else: # Vendor
+            balance += r['credit'] - r['debit']
+            r['balance_str'] = f"{abs(balance):.2f} {'Cr' if balance >= 0 else 'Dr'}"
+            r['balance'] = balance
+            
+    return rows
 
 @app.delete("/api/reset_database")
 def reset_database(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
@@ -496,6 +632,63 @@ def reset_database(db: Session = Depends(get_db), user: models.User = Depends(ge
     db.query(models.Party).delete()
     db.commit()
     return {"message": "Database wiped successfully!"}
+
+from fastapi.encoders import jsonable_encoder
+import json
+from fastapi import File, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import text
+
+@app.get("/api/backup")
+def backup_database(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if user.role != "SuperAdmin":
+        raise HTTPException(status_code=403, detail="Only SuperAdmin can backup database")
+    
+    backup_data = {}
+    for table in models.Base.metadata.sorted_tables:
+        results = db.execute(table.select()).fetchall()
+        backup_data[table.name] = [dict(r._mapping) for r in results]
+    
+    filename = f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
+    content = json.dumps(jsonable_encoder(backup_data))
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.post("/api/restore")
+async def restore_database(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if user.role != "SuperAdmin":
+        raise HTTPException(status_code=403, detail="Only SuperAdmin can restore database")
+    
+    content = await file.read()
+    try:
+        backup_data = json.loads(content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+
+    try:
+        # 1. Clear current tables
+        for table in reversed(models.Base.metadata.sorted_tables):
+            db.execute(table.delete())
+        
+        # 2. Insert backup data
+        for table in models.Base.metadata.sorted_tables:
+            if table.name in backup_data and backup_data[table.name]:
+                db.execute(table.insert(), backup_data[table.name])
+        
+        # 3. Update PostgreSQL sequences safely
+        if engine.dialect.name == "postgresql":
+            for table in models.Base.metadata.sorted_tables:
+                seq_name = f"{table.name}_id_seq"
+                db.execute(text(f"SELECT setval('{seq_name}', coalesce(max(id), 1), max(id) IS NOT null) FROM {table.name}"))
+                
+        db.commit()
+        return {"message": "Database restored successfully!"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
 
 # --- STATIC FILES FOR SPA ---
 app.mount("/static", StaticFiles(directory="static"), name="static")

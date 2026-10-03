@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D N Trans Logistics App</title>
+    <title>D TRANS EXPRESS LOGISTICS</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#2563eb">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -15,11 +15,11 @@
             @page { size: A4 landscape; margin: 5mm; }
             .no-print { display: none !important; }
             .print-only { display: block !important; }
-            body { background: white; font-size: 12px; margin: 0; padding: 0; }
+            body { background: white; font-size: 12px; margin: 0; padding: 0; min-width: 1050px; }
             .page-break { page-break-after: always; }
             .print-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
             .print-table th, .print-table td { border: 1px solid black; padding: 6px; text-align: left; }
-            #print-invoice { width: 100% !important; max-width: none !important; page-break-inside: avoid; }
+            #print-invoice { width: 1050px !important; min-width: 1050px !important; max-width: 1050px !important; margin: 0 auto; page-break-inside: avoid; }
         }
         .print-only { display: none; }
     </style>
@@ -41,8 +41,7 @@
     <div x-cloak x-show="!token" class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
             <div>
-                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to D N Trans</h2>
-                <p class="text-center text-sm text-gray-500 mt-2">Default: admin / admin123</p>
+                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to D Trans</h2>
             </div>
             <form class="mt-8 space-y-6" @submit.prevent="login">
                 <input x-model="loginForm.username" type="text" required class="appearance-none rounded-lg relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Username">
@@ -58,9 +57,16 @@
     <div x-cloak x-show="token" class="pb-24">
         
         <header class="bg-blue-800 text-white p-4 sticky top-0 z-10 shadow-md flex justify-between items-center no-print">
-            <h1 class="text-xl font-bold tracking-tight">D N Trans Logistics</h1>
-            <div class="flex gap-2">
-                <button x-show="role === 'SuperAdmin'" @click="resetDatabase" class="text-xs bg-red-600 hover:bg-red-700 font-bold px-2 py-1 rounded">Factory Reset</button>
+            <h1 class="text-xl font-bold tracking-tight">D TRANS EXPRESS LOGISTICS</h1>
+            <div class="flex gap-2 items-center">
+                <template x-if="role === 'SuperAdmin'">
+                    <div class="flex gap-2 items-center border-r border-blue-600 pr-2 mr-2">
+                        <button @click="downloadBackup" class="text-xs bg-green-600 hover:bg-green-700 font-bold px-2 py-1 rounded" title="Download Database Backup">Backup</button>
+                        <button @click="$refs.restoreInput.click()" class="text-xs bg-yellow-600 hover:bg-yellow-700 font-bold px-2 py-1 rounded" title="Restore Database from Backup">Restore</button>
+                        <input x-ref="restoreInput" type="file" accept=".json" class="hidden" @change="restoreBackup($event)">
+                        <button @click="resetDatabase" class="text-xs bg-red-600 hover:bg-red-700 font-bold px-2 py-1 rounded" title="Wipe Database Completely">Factory Reset</button>
+                    </div>
+                </template>
                 <button @click="logout" class="text-sm bg-blue-900 hover:bg-blue-950 px-3 py-1 rounded">Logout</button>
             </div>
         </header>
@@ -228,7 +234,7 @@
                 <h3 class="font-bold text-gray-700 mb-2">Customer Exposure Ledger</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <template x-for="party in dashboard.outstanding">
-                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4" :class="party.net > 50000 ? 'border-red-500' : 'border-orange-400'">
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 cursor-pointer hover:shadow-md transition-transform hover:-translate-y-1" :class="party.net > 50000 ? 'border-red-500' : 'border-orange-400'" @click="openLedger(party, 'customer')">
                             <div>
                                 <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
                                 <p class="text-xs text-gray-500">Unbilled (Dispatched): ₹<span x-text="party.unbilled.toFixed(2)"></span></p>
@@ -245,7 +251,7 @@
                 <h3 class="font-bold text-gray-700 mb-2 mt-6">Vendor Exposure Ledger (To Pay)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <template x-for="party in dashboard.vendor_outstanding">
-                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 border-red-500">
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 border-red-500 cursor-pointer hover:shadow-md transition-transform hover:-translate-y-1" @click="openLedger(party, 'vendor')">
                             <div>
                                 <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
                             </div>
@@ -255,6 +261,19 @@
                             </div>
                         </div>
                     </template>
+                </div>
+                
+                <h3 class="font-bold text-gray-700 mb-2 mt-6">General Expense Ledger</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 border-purple-500 cursor-pointer hover:shadow-md transition-transform hover:-translate-y-1" @click="openLedger(null, 'expense')">
+                        <div>
+                            <h4 class="font-bold text-gray-800 text-lg">All General Expenses</h4>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Total Booked</p>
+                            <p class="font-black text-xl text-purple-800">₹<span x-text="dashboard.total_expenses ? dashboard.total_expenses.toFixed(2) : '0.00'"></span></p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -324,8 +343,8 @@
                     </div>
 
                     <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center">
-                        <span class="font-bold text-gray-600" x-text="lrForm.is_fixed_rate ? 'Total Lumpsum Freight:' : 'Total Freight (Inc. 100 St. Ch.):'"></span>
-                        <span class="text-2xl font-black text-blue-800">₹<span x-text="lrForm.is_fixed_rate ? lrForm.rate.toFixed(2) : (lrForm.charged_weight * lrForm.rate + 100).toFixed(2)"></span></span>
+                        <span class="font-bold text-gray-600" x-text="lrForm.is_fixed_rate ? 'Total Lumpsum Freight:' : 'Total Freight:'"></span>
+                        <span class="text-2xl font-black text-blue-800">₹<span x-text="lrForm.is_fixed_rate ? lrForm.rate.toFixed(2) : (lrForm.charged_weight * lrForm.rate).toFixed(2)"></span></span>
                     </div>
 
                     <button type="submit" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg shadow-md hover:bg-blue-900 transition">Save Consignment Note</button>
@@ -540,12 +559,12 @@
         <div id="print-invoice" class="print-only" style="border: 2px solid black; padding: 0; font-family: Calibri, 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; max-width: 1000px; margin: 0 auto; color: black; line-height: 1.4;">
             <div style="display: flex; border-bottom: 2px solid black;">
                 <div style="width: 20%; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <img src="/static/logo.png" style="max-width: 100%; max-height: 80px;" alt="DN TRANS LOGISTICS">
+                    <img src="/static/logo.png" style="max-width: 100%; max-height: 80px;" alt="D TRANS EXPRESS LOGISTICS">
                 </div>
                 <div style="width: 80%; text-align: center; padding: 10px;">
-                    <h1 style="color: #1e3a8a; font-size: 26px; font-weight: 900; margin: 0; padding-bottom: 5px;">D N TRANS LOGISTICS</h1>
-                    <p style="margin: 0;">Shop No. 30, Shree Hari Vatika, Near Shree Hari Circle, Vinzol Geratpur Road, Behind Vivekananda Nagar, New Hathijan Ahmedabad - 382435</p>
-                    <p style="margin: 0;">Contact: 9838197747 , 9998337724 | Email: dntranslogistic@gmail.com | <strong>GSTIN: 24AAZFD8603M1ZS</strong> | <strong>PAN: AAZFD8603M</strong></p>
+                    <h1 style="color: #1e3a8a; font-size: 26px; font-weight: 900; margin: 0; padding-bottom: 5px;">D TRANS EXPRESS LOGISTICS</h1>
+                    <p style="margin: 0;">Reg office : Shop No. 31, Shree Hari Vatika, Nr. Shree Hari Circle, Vinzol - Geratpur Road, Behind Vivekanand Nagar, New Hathijan, Ahmedabad 382435. Gujarat</p>
+                    <p style="margin: 0;">Mob.: 9998337724, 7201827626 | Email: dtransexpresslogistics@gmail.com | <strong>GSTIN: 24JUDPD0543K1ZS</strong> | <strong>PAN: JUDPD0543K</strong></p>
                 </div>
             </div>
 
@@ -632,7 +651,7 @@
             <div style="padding: 10px; border-bottom: 2px solid black; font-size: 11px;">
                 <strong>Terms and Conditions :-</strong><br>
                 1. Subject to Ahmedabad jurisdiction only.<br>
-                2. The Payment of the Bill should be made only by Account Payee Cheque/DD drawn in favour of <strong>D N TRANS LOGISTICS</strong> only.<br>
+                2. The Payment of the Bill should be made only by Account Payee Cheque/DD drawn in favour of <strong>D TRANS EXPRESS LOGISTICS</strong> only.<br>
                 3. Payment Should made on due date or with in 15 days of receipt of bill else interest will be charged 18% p.a.<br>
                 4. In case of any discrepancy in the bill, same should be brought to the notice of the company within 7 days in writing else shall be acceptable to you.<br>
                 5. Goods & Service tax is payable by the billed party under RCM.
@@ -642,12 +661,12 @@
                 <div style="width: 60%;">
                     <strong>Bank Details:</strong><br>
                     <strong>Bank Name:</strong> The Karnavati Co-operative Bank Ltd<br>
-                    <strong>Account No.:</strong> 124006005001904<br>
+                    <strong>Account No.:</strong> 124006005001924<br>
                     <strong>IFSC Code:</strong> GSCB0UTKCBL<br>
                     <strong>Branch:</strong> Vastral, Ahmedabad
                 </div>
                 <div style="width: 40%; text-align: right; padding-right: 10px;">
-                    <p style="margin: 0; color: #1e3a8a; font-weight: bold;">For, D N TRANS LOGISTICS</p>
+                    <p style="margin: 0; color: #1e3a8a; font-weight: bold;">For, D TRANS EXPRESS LOGISTICS</p>
                     <br><br><br>
                     <p style="margin: 0; font-weight: bold;">Authorised Signatory</p>
                 </div>
@@ -685,7 +704,16 @@
                 allBilties: [],
                 availableBilties: [], // For Challan
                 unbilledLRs: [], // For Invoice
-                dashboard: { outstanding: [], vendor_outstanding: [], revenue_labels: [], revenue_data: [] },
+                dashboard: { outstanding: [], vendor_outstanding: [], revenue_labels: [], revenue_data: [], total_expenses: 0 },
+                
+                ledgerModalOpen: false,
+                ledgerType: '',
+                ledgerParty: null,
+                ledgerInvoices: [],
+                ledgerBilties: [],
+                ledgerChallans: [],
+                ledgerPayments: [],
+                ledgerExpenses: [],
                 
                 partyForm: { name: '', gst_no: '', pan_no: '', party_type: 'Customer', address: '' },
                 lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', lorry_no: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false },
@@ -836,6 +864,97 @@
                     } catch(e) {
                         this.showToast(e.message || 'Error wiping database', 'error');
                     }
+                },
+                
+                async downloadBackup() {
+                    try {
+                        const response = await fetch('/api/backup', { headers: { 'Authorization': 'Bearer ' + this.token } });
+                        if(!response.ok) throw new Error('Backup failed');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        const cd = response.headers.get('Content-Disposition');
+                        let fileName = 'backup.json';
+                        if (cd) {
+                            const match = cd.match(/filename="?(.+)"?/);
+                            if (match && match.length === 2) fileName = match[1];
+                        }
+                        a.download = fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        this.showToast('Backup downloaded successfully!', 'success');
+                    } catch(e) {
+                        this.showToast(e.message || 'Error downloading backup', 'error');
+                    }
+                },
+
+                async restoreBackup(event) {
+                    const file = event.target.files[0];
+                    if(!file) return;
+                    if(!confirm('WARNING: Restoring will WIPE all current database records and replace them with this backup file. Are you absolutely sure?')) {
+                        event.target.value = '';
+                        return;
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    try {
+                        this.showToast('Restoring database, please wait...', 'info');
+                        const response = await fetch('/api/restore', {
+                            method: 'POST',
+                            headers: { 'Authorization': 'Bearer ' + this.token },
+                            body: formData
+                        });
+                        if(!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.detail || 'Restore failed');
+                        }
+                        this.showToast('Database restored! Logging out...', 'success');
+                        setTimeout(() => this.logout(), 1500);
+                    } catch(e) {
+                        this.showToast(e.message || 'Error restoring database', 'error');
+                    } finally {
+                        event.target.value = '';
+                    }
+                },
+
+                formatDate(dateStr) {
+                    if(!dateStr) return '';
+                    const d = new Date(dateStr);
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    return `${day}-${month}-${year}`;
+                },
+
+                async openLedger(party, type) {
+                    this.ledgerType = type;
+                    this.ledgerParty = party;
+                    this.ledgerRows = [];
+                    this.ledgerExpenses = [];
+                    this.ledgerModalOpen = true;
+
+                    try {
+                        if (type === 'customer' || type === 'vendor') {
+                            const res = await this.apiCall(`/api/parties/${party.party_id}/tally_ledger`);
+                            this.ledgerRows = res || [];
+                        } else if (type === 'expense') {
+                            const expRes = await this.apiCall(`/api/expenses`);
+                            this.ledgerExpenses = expRes || [];
+                        }
+                    } catch(e) {
+                        this.showToast('Error loading ledger details', 'error');
+                        console.error(e);
+                    }
+                },
+                
+                closeLedger() {
+                    this.ledgerModalOpen = false;
+                    this.ledgerParty = null;
                 },
                 
                 switchTab(id) {
@@ -1090,5 +1209,90 @@
             }
         }
     </script>
-</body>
+        <!-- Ledger Modal -->
+        <div x-show="ledgerModalOpen" style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 no-print">
+            <div @click.away="closeLedger()" class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                <div class="bg-blue-900 text-white p-4 flex justify-between items-center">
+                    <h2 class="text-xl font-bold" x-text="ledgerParty ? ledgerParty.party_name + ' - Detailed Ledger' : 'Ledger'"></h2>
+                    <button @click="closeLedger()" class="text-white hover:text-red-300 font-bold text-3xl leading-none">&times;</button>
+                </div>
+                
+                <div class="p-6 overflow-y-auto flex-1 bg-gray-50">
+                    <template x-if="ledgerType === 'customer' || ledgerType === 'vendor'">
+                        <div class="bg-white border rounded shadow-sm">
+                            <h3 class="font-bold text-blue-900 bg-blue-50 p-3 border-b uppercase tracking-wider text-sm flex justify-between">
+                                <span>Statement of Account</span>
+                            </h3>
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-gray-100 text-gray-700 uppercase text-[10px]">
+                                    <tr>
+                                        <th class="p-3">Date</th>
+                                        <th class="p-3 w-1/3">Particulars</th>
+                                        <th class="p-3">Vch Type</th>
+                                        <th class="p-3">Vch No.</th>
+                                        <th class="p-3 text-right">Debit (₹)</th>
+                                        <th class="p-3 text-right">Credit (₹)</th>
+                                        <th class="p-3 text-right">Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="(row, idx) in ledgerRows" :key="idx">
+                                        <tr class="border-t hover:bg-gray-50 text-gray-800">
+                                            <td class="p-3" x-text="formatDate(row.date)"></td>
+                                            <td class="p-3 font-semibold" x-text="row.particulars"></td>
+                                            <td class="p-3" x-text="row.vch_type"></td>
+                                            <td class="p-3 text-gray-500" x-text="row.vch_no"></td>
+                                            <td class="p-3 text-right" x-text="row.debit > 0 ? row.debit.toFixed(2) : ''"></td>
+                                            <td class="p-3 text-right" x-text="row.credit > 0 ? row.credit.toFixed(2) : ''"></td>
+                                            <td class="p-3 text-right font-bold" x-text="row.balance_str"></td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="ledgerRows.length === 0"><td colspan="7" class="p-6 text-center text-gray-500 italic">No transactions found for this party.</td></tr>
+                                </tbody>
+                                <tfoot x-show="ledgerRows.length > 0" class="bg-gray-800 text-white font-bold">
+                                    <tr>
+                                        <td colspan="4" class="p-4 text-right uppercase tracking-wider text-xs">Closing Balance:</td>
+                                        <td class="p-4 text-right" x-text="ledgerRows.reduce((sum, r) => sum + r.debit, 0).toFixed(2)"></td>
+                                        <td class="p-4 text-right" x-text="ledgerRows.reduce((sum, r) => sum + r.credit, 0).toFixed(2)"></td>
+                                        <td class="p-4 text-right text-lg text-yellow-300" x-text="ledgerRows[ledgerRows.length-1].balance_str"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </template>
+                    
+                    <template x-if="ledgerType === 'expense'">
+                        <div class="space-y-6">
+                            <!-- Expense History -->
+                            <div class="bg-white border rounded shadow-sm">
+                                <h3 class="font-bold text-purple-700 bg-purple-50 p-3 border-b">General Expense Ledger</h3>
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-gray-100 text-gray-600">
+                                        <tr><th class="p-2">Date</th><th class="p-2">Type</th><th class="p-2">Description</th><th class="p-2 text-right">Amount</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="exp in ledgerExpenses" :key="exp.id">
+                                            <tr class="border-t hover:bg-gray-50">
+                                                <td class="p-2" x-text="formatDate(exp.date)"></td>
+                                                <td class="p-2 font-bold" x-text="exp.expense_type"></td>
+                                                <td class="p-2" x-text="exp.description"></td>
+                                                <td class="p-2 text-right font-bold text-purple-600" x-text="'₹' + exp.amount.toFixed(2)"></td>
+                                            </tr>
+                                        </template>
+                                        <tr x-show="ledgerExpenses.length === 0"><td colspan="4" class="p-4 text-center text-gray-500 italic">No expenses recorded.</td></tr>
+                                    </tbody>
+                                    <tfoot x-show="ledgerExpenses.length > 0" class="bg-purple-50 font-bold border-t border-purple-200">
+                                        <tr>
+                                            <td colspan="3" class="p-2 text-right">Total Booked Expenses:</td>
+                                            <td class="p-2 text-right text-purple-700" x-text="'₹' + ledgerExpenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)"></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </body>
 </html>
