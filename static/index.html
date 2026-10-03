@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D N Trans Logistics App</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        @media print {
+            @page { size: A4 landscape; margin: 5mm; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; font-size: 12px; margin: 0; padding: 0; }
+            .page-break { page-break-after: always; }
+            .print-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            .print-table th, .print-table td { border: 1px solid black; padding: 6px; text-align: left; }
+            #print-invoice { width: 100% !important; max-width: none !important; page-break-inside: avoid; }
+        }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 antialiased font-sans" x-data="appData()" x-init="initApp()">
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 no-print">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-show="toast.show" x-transition.opacity.duration.300ms
+                 class="px-4 py-3 rounded shadow-lg text-white font-semibold flex items-center gap-2"
+                 :class="toast.type === 'success' ? 'bg-green-500' : (toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500')">
+                <span x-text="toast.message"></span>
+            </div>
+        </template>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div x-cloak x-show="!token" class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+            <div>
+                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to D N Trans</h2>
+                <p class="text-center text-sm text-gray-500 mt-2">Default: admin / admin123</p>
+            </div>
+            <form class="mt-8 space-y-6" @submit.prevent="login">
+                <input x-model="loginForm.username" type="text" required class="appearance-none rounded-lg relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Username">
+                <input x-model="loginForm.password" type="password" required class="appearance-none rounded-lg relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Password">
+                <button type="submit" class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-md transition-colors">
+                    Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APPLICATION -->
+    <div x-cloak x-show="token" class="pb-24">
+        
+        <header class="bg-blue-800 text-white p-4 sticky top-0 z-10 shadow-md flex justify-between items-center no-print">
+            <h1 class="text-xl font-bold tracking-tight">D N Trans Logistics</h1>
+            <div class="flex gap-2">
+                <button x-show="role === 'SuperAdmin'" @click="resetDatabase" class="text-xs bg-red-600 hover:bg-red-700 font-bold px-2 py-1 rounded">Factory Reset</button>
+                <button @click="logout" class="text-sm bg-blue-900 hover:bg-blue-950 px-3 py-1 rounded">Logout</button>
+            </div>
+        </header>
+
+        <main class="p-4 max-w-7xl mx-auto no-print space-y-6">
+            
+            <!-- DASHBOARD TAB -->
+            <div x-show="activeTab === 'dashboard'">
+                <div class="flex justify-between items-end mb-4">
+                    <h2 class="text-2xl font-bold">Financial Dashboard</h2>
+                    <button @click="loadDashboard" class="text-blue-600 text-sm flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Refresh</button>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-blue-50 p-4 rounded-xl shadow border border-blue-100 text-center">
+                        <p class="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Total Revenue</p>
+                        <p class="text-xl font-black text-blue-900">₹<span x-text="(dashboard.total_revenue || 0).toLocaleString('en-IN')"></span></p>
+                    </div>
+                    <div class="bg-red-50 p-4 rounded-xl shadow border border-red-100 text-center">
+                        <p class="text-xs text-red-600 font-bold uppercase tracking-wider mb-1">Total Cost (Trip & Exp)</p>
+                        <p class="text-xl font-black text-red-900">₹<span x-text="(dashboard.total_cost || 0).toLocaleString('en-IN')"></span></p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-xl shadow border border-green-100 text-center">
+                        <p class="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Net Revenue</p>
+                        <p class="text-xl font-black text-green-900">₹<span x-text="(dashboard.net_revenue || 0).toLocaleString('en-IN')"></span></p>
+                    </div>
+                </div>
+                
+                <div class="bg-white p-4 rounded-xl shadow border border-gray-200 mb-6 flex flex-col md:flex-row gap-6 items-center justify-center">
+                    <div class="w-full md:w-1/2">
+                        <h3 class="font-bold text-gray-700 mb-2 text-center">Monthly Revenue Split</h3>
+                        <div class="relative h-48 w-full max-w-xs mx-auto">
+                            <canvas id="revenueChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ACCOUNTS TAB -->
+            <div x-show="activeTab === 'accounts'" class="space-y-6">
+                <h2 class="text-2xl font-bold mb-4">Accounts & Payments</h2>
+                
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4 border-green-500">
+                    <h3 class="font-bold text-green-700 mb-3 text-lg flex items-center gap-2">Record Payment Received (Customer)</h3>
+                    <form @submit.prevent="recordPayment" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Customer</label>
+                                <select x-model="paymentForm.party_id" @change="fetchUnpaidInvoices" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                                    <option value="">Select Customer...</option>
+                                    <template x-for="p in parties.filter(p => p.party_type === 'Customer')" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Against Invoice</label>
+                                <select x-model="paymentForm.invoice_id" @change="selectUnpaidInvoice" class="w-full px-4 py-2 rounded border border-gray-300">
+                                    <option value="">Unallocated / Advance</option>
+                                    <template x-for="inv in unpaidInvoices" :key="inv.id"><option :value="inv.id" x-text="inv.bill_no + ' (Bal: ₹' + inv.balance + ')'"></option></template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Amount Received (₹)</label>
+                                <input x-model.number="paymentForm.amount_received" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-green-700" required>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Date</label>
+                                <input x-model="paymentForm.date" type="date" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Mode</label>
+                                <select x-model="paymentForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300">
+                                    <option value="NEFT">NEFT/RTGS</option>
+                                    <option value="Cheque">Cheque</option>
+                                    <option value="Cash">Cash</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Reference / UTR No.</label>
+                                <input x-model="paymentForm.utr_no" type="text" class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition">Save Payment & Update Ledger</button>
+                    </form>
+                </div>
+                
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4 border-red-500">
+                    <h3 class="font-bold text-red-700 mb-3 text-lg flex items-center gap-2">Record Payment Made (Vendor)</h3>
+                    <form @submit.prevent="recordVendorPayment" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Vendor (Truck Owner)</label>
+                                <select x-model="vendorPaymentForm.vendor_id" @change="fetchUnpaidChallans" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                                    <option value="">Select Vendor...</option>
+                                    <template x-for="p in parties.filter(p => p.party_type === 'Vendor')" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Against Challan</label>
+                                <select x-model="vendorPaymentForm.challan_id" @change="selectUnpaidChallan" class="w-full px-4 py-2 rounded border border-gray-300">
+                                    <option value="">Unallocated / Advance</option>
+                                    <template x-for="ch in unpaidChallans" :key="ch.id"><option :value="ch.id" x-text="ch.challan_no + ' (Bal: ₹' + ch.balance + ')'"></option></template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Amount Paid (₹)</label>
+                                <input x-model.number="vendorPaymentForm.amount_paid" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-red-700" required>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Date</label>
+                                <input x-model="vendorPaymentForm.date" type="date" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Mode</label>
+                                <select x-model="vendorPaymentForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300">
+                                    <option value="NEFT">NEFT/RTGS</option>
+                                    <option value="Cheque">Cheque</option>
+                                    <option value="Cash">Cash</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Reference / UTR No.</label>
+                                <input x-model="vendorPaymentForm.utr_no" type="text" class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-red-700 transition">Save Payment & Update Ledger</button>
+                    </form>
+                </div>
+                
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4 border-orange-500">
+                    <h3 class="font-bold text-orange-700 mb-3 text-lg flex items-center gap-2">Record General Expense</h3>
+                    <form @submit.prevent="recordExpense" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Expense Type</label>
+                                <select x-model="expenseForm.expense_type" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                                    <option value="Office">Office Expense</option>
+                                    <option value="Trip">Trip/Lorry Expense</option>
+                                    <option value="Maintenance">Maintenance</option>
+                                    <option value="Salary">Staff Salary</option>
+                                    <option value="Other">Other Charges</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Date</label>
+                                <input x-model="expenseForm.date" type="date" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Description / Note</label>
+                            <input x-model="expenseForm.description" type="text" placeholder="e.g. Diesel slip, Office tea, Toll tax" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Amount (₹)</label>
+                            <input x-model.number="expenseForm.amount" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-orange-700" required>
+                        </div>
+                        <button type="submit" class="w-full bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-700 transition">Record Expense</button>
+                    </form>
+                </div>
+
+                <h3 class="font-bold text-gray-700 mb-2">Customer Exposure Ledger</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <template x-for="party in dashboard.outstanding">
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4" :class="party.net > 50000 ? 'border-red-500' : 'border-orange-400'">
+                            <div>
+                                <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
+                                <p class="text-xs text-gray-500">Unbilled (Dispatched): ₹<span x-text="party.unbilled.toFixed(2)"></span></p>
+                                <p class="text-xs text-gray-500">Billed & Unpaid: ₹<span x-text="party.billed.toFixed(2)"></span></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Net Exposure</p>
+                                <p class="font-black text-xl text-gray-800">₹<span x-text="party.net.toFixed(2)"></span></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <h3 class="font-bold text-gray-700 mb-2 mt-6">Vendor Exposure Ledger (To Pay)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <template x-for="party in dashboard.vendor_outstanding">
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 border-red-500">
+                            <div>
+                                <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Payable Balance</p>
+                                <p class="font-black text-xl text-red-800">₹<span x-text="party.net.toFixed(2)"></span></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- NEW LR TAB -->
+            <div x-show="activeTab === 'lr'">
+                <h2 class="text-2xl font-bold mb-4">New Consignment Note (Bilty)</h2>
+                <form @submit.prevent="createLR" class="bg-white p-5 rounded-xl shadow border border-gray-200 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Consignment No.</label>
+                            <input x-model="lrForm.lr_no" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Date</label>
+                            <input x-model="lrForm.date" type="date" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Consignor (Sender)</label>
+                            <select x-model="lrForm.consignor_id" class="w-full px-4 py-2 rounded border border-gray-300 mt-1" required>
+                                <option value="">Select Party...</option>
+                                <template x-for="p in parties" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Consignee (Receiver)</label>
+                            <select x-model="lrForm.consignee_id" class="w-full px-4 py-2 rounded border border-gray-300 mt-1" required>
+                                <option value="">Select Party...</option>
+                                <template x-for="p in parties" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Charged Weight (MT)</label>
+                            <input x-model.number="lrForm.charged_weight" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-bold text-gray-500 uppercase" x-text="lrForm.is_fixed_rate ? 'Lumpsum Freight (₹)' : 'Rate per MT (₹)'"></label>
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold text-blue-600"><input type="checkbox" x-model="lrForm.is_fixed_rate"> FIXED</label>
+                            </div>
+                            <input x-model.number="lrForm.rate" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">GST Paid By</label>
+                            <select x-model="lrForm.gst_paid_by" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                                <option value="CONSIGNEE">Consignee</option>
+                                <option value="CONSIGNOR">Consignor</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Packages / Type</label>
+                            <input x-model="lrForm.packages" type="text" placeholder="e.g. Loose, 10 Bags" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Particulars (Description)</label>
+                        <input x-model="lrForm.description" type="text" placeholder="e.g. Goods, LDPE Coated Film" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                    </div>
+
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center">
+                        <span class="font-bold text-gray-600" x-text="lrForm.is_fixed_rate ? 'Total Lumpsum Freight:' : 'Total Freight (Inc. 100 St. Ch.):'"></span>
+                        <span class="text-2xl font-black text-blue-800">₹<span x-text="lrForm.is_fixed_rate ? lrForm.rate.toFixed(2) : (lrForm.charged_weight * lrForm.rate + 100).toFixed(2)"></span></span>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg shadow-md hover:bg-blue-900 transition">Save Consignment Note</button>
+                </form>
+            </div>
+
+            <!-- DISPATCH (CHALLAN) TAB - NEWLY ADDED! -->
+            <div x-show="activeTab === 'dispatch'">
+                <h2 class="text-2xl font-bold mb-4">Lorry Challan (Dispatch Trips)</h2>
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                    <p class="text-sm text-yellow-700"><strong>Note:</strong> A Bilty only appears in Accounts Receivable (Billing) AFTER it is attached to a Challan here. This proves the goods were dispatched.</p>
+                </div>
+                <form @submit.prevent="createChallan" class="bg-white p-5 rounded-xl shadow border border-gray-200 space-y-4">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Challan No.</label>
+                            <input x-model="challanForm.challan_no" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Date</label>
+                            <input x-model="challanForm.date" type="date" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">From</label>
+                            <input x-model="challanForm.origin" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">To</label>
+                            <input x-model="challanForm.destination" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Truck / Lorry No.</label>
+                            <input x-model="challanForm.lorry_no" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Vendor (Truck Owner)</label>
+                            <select x-model="challanForm.vendor_id" class="w-full px-4 py-2 rounded border border-gray-300 mt-1" required>
+                                <option value="">Select Vendor...</option>
+                                <template x-for="p in parties.filter(p => p.party_type === 'Vendor')" :key="p.id">
+                                    <option :value="p.id" x-text="p.name + ' - ' + (p.pan_no || 'No PAN')"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Driver Name</label>
+                            <input x-model="challanForm.driver_name" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Vendor Freight (Lorry Hire) ₹</label>
+                            <input x-model.number="challanForm.vendor_freight" type="number" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Advance Paid (₹)</label>
+                            <input x-model.number="challanForm.advance_paid" type="number" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div class="flex items-center gap-2 mt-6">
+                            <input type="checkbox" x-model="challanForm.apply_tds" id="apply_tds" class="w-5 h-5 text-blue-600 rounded">
+                            <label for="apply_tds" class="font-bold text-gray-700">Apply TDS Deduction?</label>
+                        </div>
+                    </div>
+
+                    <!-- LRs to Attach -->
+                    <h3 class="font-bold border-b pb-2 mt-4">Select Bilties (LRs) to Load on this Truck</h3>
+                    <div class="space-y-2 max-h-60 overflow-y-auto bg-gray-50 p-2 rounded border border-gray-200">
+                        <template x-for="lr in availableBilties" :key="lr.id">
+                            <div class="flex items-center gap-3 p-2 bg-white rounded shadow-sm border border-gray-100 hover:bg-blue-50">
+                                <label class="flex-1 flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" :value="lr.id" x-model="challanForm.bilty_ids" class="w-5 h-5 text-blue-600 rounded">
+                                    <div>
+                                        <p class="font-bold text-sm">LR No: <span x-text="lr.lr_no"></span> <span class="text-xs text-gray-500">(Wt: <span x-text="lr.charged_weight"></span> MT)</span></p>
+                                    </div>
+                                </label>
+                                <button type="button" x-show="role === 'SuperAdmin'" @click="deleteBilty(lr.id)" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1 bg-red-50 border border-red-200 rounded">Delete</button>
+                            </div>
+                        </template>
+                        <div x-show="availableBilties.length === 0" class="text-center p-4 text-sm text-gray-500">
+                            No pending (unattached) Bilties available. Create a Bilty first!
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-orange-500 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-600 transition">Save & Dispatch Challan</button>
+                </form>
+            </div>
+
+            <!-- BILLING TAB -->
+            <div x-show="activeTab === 'billing'">
+                <h2 class="text-2xl font-bold mb-4">Generate Freight Invoice</h2>
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 space-y-4">
+                    <label class="text-xs font-bold text-gray-500 uppercase">Select Customer to Bill</label>
+                    <select x-model="billingForm.party_id" @change="fetchUnbilled" class="w-full px-4 py-3 rounded-lg border border-gray-300">
+                        <option value="">Select Customer...</option>
+                        <template x-for="p in parties.filter(p => p.party_type === 'Customer')" :key="p.id">
+                            <option :value="p.id" x-text="p.name"></option>
+                        </template>
+                    </select>
+
+                    <div x-show="unbilledLRs.length > 0" class="mt-4">
+                        <h3 class="font-bold mb-2 border-b pb-2">Select Dispatched Trips to Invoice</h3>
+                        <div class="space-y-2 max-h-60 overflow-y-auto">
+                            <template x-for="lr in unbilledLRs" :key="lr.id">
+                                <div class="flex items-center gap-3 p-3 bg-gray-50 rounded border border-gray-200 hover:bg-green-50 transition">
+                                    <label class="flex-1 flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" :value="lr.id" x-model="billingForm.bilty_ids" class="w-5 h-5 text-green-600 rounded">
+                                        <div>
+                                            <p class="font-bold">LR: <span x-text="lr.lr_no"></span> <span class="text-xs text-gray-500 ml-2">(₹<span x-text="lr.total_freight_charges"></span>)</span></p>
+                                        </div>
+                                    </label>
+                                    <button type="button" x-show="role === 'SuperAdmin'" @click="deleteBilty(lr.id)" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1 bg-red-50 border border-red-200 rounded">Delete</button>
+                                </div>
+                            </template>
+                        </div>
+                        
+                        <div class="mt-4 grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Invoice No.</label>
+                                <input x-model="billingForm.bill_no" type="text" placeholder="Invoice No." required class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Invoice Date</label>
+                                <input x-model="billingForm.date" type="date" required class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                        </div>
+
+                        <button @click="generateInvoice" :disabled="isGenerating" :class="isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-700'" class="w-full mt-4 bg-green-600 text-white font-bold py-3 rounded-lg shadow-md transition">
+                            <span x-text="isGenerating ? 'Generating...' : 'Generate Invoice & Print'"></span>
+                        </button>
+                    </div>
+                    <div x-show="billingForm.party_id && unbilledLRs.length === 0" class="text-center p-6 text-gray-500 italic">
+                        No unbilled dispatched trips found. Ensure Bilties are created AND attached to a Dispatch Challan.
+                    </div>
+                </div>
+                
+                <h3 class="text-lg font-bold mb-2">Recently Generated Invoices</h3>
+                <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                    <template x-for="inv in pastInvoices" :key="inv.id">
+                        <div class="flex justify-between items-center py-2 border-b last:border-0">
+                            <div>
+                                <p class="font-bold text-sm">Invoice No: <span x-text="inv.bill_no"></span> <span class="text-gray-400 text-xs">(<span x-text="inv.date"></span>)</span></p>
+                                <p class="text-xs font-semibold text-blue-700">₹<span x-text="inv.net_amount"></span></p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="reprintInvoice(inv)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded shadow-sm border border-gray-300 transition flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                                    Print
+                                </button>
+                                <button x-show="role === 'SuperAdmin'" @click="deleteInvoice(inv.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded shadow-sm border border-red-200 transition font-bold">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="pastInvoices.length === 0" class="text-center text-xs text-gray-500 py-4">No past invoices found.</div>
+                </div>
+            </div>
+
+            <!-- PARTIES TAB -->
+            <div x-show="activeTab === 'parties'">
+                <h2 class="text-2xl font-bold mb-4">Manage Parties</h2>
+                <form @submit.prevent="createParty" class="bg-white p-5 rounded-xl shadow border border-gray-200 space-y-4 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input x-model="partyForm.name" type="text" placeholder="Company Name" required class="w-full px-4 py-2 rounded border border-gray-300">
+                        <input x-model="partyForm.gst_no" type="text" placeholder="GST Number" class="w-full px-4 py-2 rounded border border-gray-300">
+                        <input x-model="partyForm.pan_no" type="text" placeholder="PAN Number (Required for Vendor TDS)" class="w-full px-4 py-2 rounded border border-gray-300">
+                        <select x-model="partyForm.party_type" class="w-full px-4 py-2 rounded border border-gray-300">
+                            <option value="Customer">Customer</option>
+                            <option value="Vendor">Vendor (Truck Owner)</option>
+                        </select>
+                        <textarea x-model="partyForm.address" placeholder="Address (For multiple addresses, separate by newlines)" class="w-full px-4 py-2 rounded border border-gray-300 md:col-span-2" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="bg-gray-800 text-white font-bold py-2 px-6 rounded hover:bg-gray-900 transition">Add Party</button>
+                </form>
+
+                <div class="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-3">Name</th>
+                                <th class="p-3">GST / PAN</th>
+                                <th class="p-3">Type</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="p in parties" :key="p.id">
+                                <tr>
+                                    <td class="p-3 font-semibold text-gray-800" x-text="p.name"></td>
+                                    <td class="p-3 text-gray-500" x-text="(p.gst_no || '') + ' ' + (p.pan_no || '')"></td>
+                                    <td class="p-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-[10px] uppercase font-bold" x-text="p.party_type"></span></td>
+                                    <td class="p-3 text-right">
+                                        <button x-show="role === 'SuperAdmin'" @click="deleteParty(p.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded border border-red-200">Delete</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- PRINT TEMPLATE: INVOICE (BASED ON REAL PDF) -->
+        <div id="print-invoice" class="print-only" style="border: 2px solid black; padding: 0; font-family: Calibri, 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; max-width: 1000px; margin: 0 auto; color: black; line-height: 1.4;">
+            <div style="display: flex; border-bottom: 2px solid black;">
+                <div style="width: 20%; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <img src="/static/logo.png" style="max-width: 100%; max-height: 80px;" alt="DN TRANS LOGISTICS">
+                </div>
+                <div style="width: 80%; text-align: center; padding: 10px;">
+                    <h1 style="color: #1e3a8a; font-size: 26px; font-weight: 900; margin: 0; padding-bottom: 5px;">D N TRANS LOGISTICS</h1>
+                    <p style="margin: 0;">Shop No. 30, Shree Hari Vatika, Near Shree Hari Circle, Vinzol Geratpur Road, Behind Vivekananda Nagar, New Hathijan Ahmedabad - 382435</p>
+                    <p style="margin: 0;">Contact: 9838197747 , 9998337724 | Email: dntranslogistic@gmail.com | <strong>GSTIN: 24AAZFD8603M1ZS</strong> | <strong>PAN: AAZFD8603M</strong></p>
+                </div>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <td colspan="7" style="border-right: 2px solid black; border-bottom: 2px solid black; padding: 0; vertical-align: top; text-align: left; height: 1px;">
+                            <div style="display: flex; flex-direction: column; height: 100%;">
+                                <div style="display: flex; border-bottom: 1px solid black;">
+                                    <div style="width: 25%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Customer Name :</div>
+                                    <div style="width: 75%; padding: 4px 5px; font-weight: bold; font-size: 14px;"><span id="print_cust_name"></span></div>
+                                </div>
+                                <div style="display: flex; border-bottom: 1px solid black; flex-grow: 1;">
+                                    <div style="width: 25%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Address :</div>
+                                    <div style="width: 75%; padding: 4px 5px; white-space: pre-wrap;"><span id="print_cust_address"></span></div>
+                                </div>
+                                <div style="display: flex;">
+                                    <div style="width: 25%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">GST No. [ GSTIN ] :</div>
+                                    <div style="width: 75%; padding: 4px 5px; font-weight: bold;"><span id="print_cust_gst"></span></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td colspan="5" style="border-bottom: 2px solid black; padding: 0; vertical-align: top; text-align: left; height: 1px;">
+                            <div style="display: flex; flex-direction: column; height: 100%;">
+                                <div style="display: flex; border-bottom: 1px solid black;">
+                                    <div style="width: 35%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Bill No :-</div>
+                                    <div style="width: 65%; padding: 4px 5px; font-weight: bold;"><span id="print_inv_no"></span></div>
+                                </div>
+                                <div style="display: flex; border-bottom: 1px solid black;">
+                                    <div style="width: 35%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Date :-</div>
+                                    <div style="width: 65%; padding: 4px 5px;"><span id="print_inv_date"></span></div>
+                                </div>
+                                <div style="display: flex; border-bottom: 1px solid black;">
+                                    <div style="width: 35%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Bill Type :-</div>
+                                    <div style="width: 65%; padding: 4px 5px;">Freight</div>
+                                </div>
+                                <div style="display: flex; border-bottom: 1px solid black;">
+                                    <div style="width: 35%; border-right: 1px solid black; padding: 4px 5px; font-weight: bold;">Reverse Charge :-</div>
+                                    <div style="width: 65%; padding: 4px 5px;">Yes</div>
+                                </div>
+                                <div style="padding: 4px 5px; font-weight: bold; font-size: 10px; flex-grow: 1;">
+                                    GST payable by Customer under Reverse Charge Mechanism
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 2px solid black; font-weight: bold;">
+                        <th style="border-right: 1px solid black; padding: 5px; width: 4%;">SR.</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 8%;">LR NO.</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 8%;">Date</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 10%;">Vehicle No.</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 12%;">From</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 12%;">To</th>
+                        <th style="border-right: 2px solid black; padding: 5px; width: 15%;">Particulars</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 7%;">Package</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 6%;">Actual<br>Weight<br>(MT)</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 6%;">Charge<br>Weight<br>(MT)</th>
+                        <th style="border-right: 1px solid black; padding: 5px; width: 6%;">Rate</th>
+                        <th style="padding: 5px; width: 10%;">Freight Rs.</th>
+                    </tr>
+                </thead>
+                <tbody id="print_inv_body" style="border-bottom: 2px solid black;">
+                </tbody>
+                <tfoot>
+                    <tr style="border-bottom: 1px solid black;">
+                        <td colspan="11" style="border-right: 1px solid black; padding: 5px; font-weight: bold; font-size: 12px; text-align: right;">Total :</td>
+                        <td style="padding: 5px; font-weight: bold; font-size: 12px; text-align: right;" id="print_inv_total"></td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid black;">
+                        <td colspan="9" style="border-right: 1px solid black; padding: 5px; text-align: left;">
+                            <strong>Amount In Words :</strong> <span id="print_inv_words"></span>
+                        </td>
+                        <td colspan="2" style="border-right: 1px solid black; padding: 5px; text-align: left;">IGST @ 5.00 %:</td>
+                        <td style="padding: 5px; text-align: right;">-</td>
+                    </tr>
+                    <tr style="border-bottom: 2px solid black;">
+                        <td colspan="9" style="border-right: 1px solid black; padding: 5px; text-align: left;"></td>
+                        <td colspan="2" style="border-right: 1px solid black; padding: 5px; text-align: left; font-weight: bold;">Net Amount (Rs)</td>
+                        <td style="padding: 5px; text-align: right; font-weight: bold;" id="print_inv_net"></td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div style="padding: 10px; border-bottom: 2px solid black; font-size: 11px;">
+                <strong>Terms and Conditions :-</strong><br>
+                1. Subject to Ahmedabad jurisdiction only.<br>
+                2. The Payment of the Bill should be made only by Account Payee Cheque/DD drawn in favour of <strong>D N TRANS LOGISTICS</strong> only.<br>
+                3. Payment Should made on due date or with in 15 days of receipt of bill else interest will be charged 18% p.a.<br>
+                4. In case of any discrepancy in the bill, same should be brought to the notice of the company within 7 days in writing else shall be acceptable to you.<br>
+                5. Goods & Service tax is payable by the billed party under RCM.
+            </div>
+
+            <div style="display: flex; padding: 10px; font-size: 11px;">
+                <div style="width: 60%;">
+                    <strong>Bank Details:</strong><br>
+                    <strong>Bank Name:</strong> The Karnavati Co-operative Bank Ltd<br>
+                    <strong>Account No.:</strong> 124006005001904<br>
+                    <strong>IFSC Code:</strong> GSCB0UTKCBL<br>
+                    <strong>Branch:</strong> Vastral, Ahmedabad
+                </div>
+                <div style="width: 40%; text-align: right; padding-right: 10px;">
+                    <p style="margin: 0; color: #1e3a8a; font-weight: bold;">For, D N TRANS LOGISTICS</p>
+                    <br><br><br>
+                    <p style="margin: 0; font-weight: bold;">Authorised Signatory</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM NAVIGATION -->
+        <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around p-2 no-print shadow-[0_-5px_15px_rgba(0,0,0,0.05)] pb-safe">
+            <template x-for="item in [
+                { id: 'dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', label: 'Dash' },
+                { id: 'lr', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: 'LR' },
+                { id: 'dispatch', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', label: 'Dispatch' },
+                { id: 'billing', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: 'Bill' },
+                { id: 'accounts', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Account' },
+                { id: 'parties', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', label: 'Party' }
+            ]">
+                <button @click="switchTab(item.id)" class="flex flex-col items-center p-2 rounded-lg transition-colors" :class="activeTab === item.id ? 'text-blue-800 bg-blue-50' : 'text-gray-500 hover:bg-gray-50'">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"></path></svg>
+                    <span class="text-[10px] font-medium mt-1" x-text="item.label"></span>
+                </button>
+            </template>
+        </nav>
+    </div>
+
+    <script>
+        let chartInstance = null;
+        function appData() {
+            return {
+                token: localStorage.getItem('token'),
+                role: localStorage.getItem('role') || 'User',
+                activeTab: 'dashboard',
+                loginForm: { username: '', password: '' },
+                toasts: [],
+                parties: [],
+                allBilties: [],
+                availableBilties: [], // For Challan
+                unbilledLRs: [], // For Invoice
+                dashboard: { outstanding: [], vendor_outstanding: [], revenue_labels: [], revenue_data: [] },
+                
+                partyForm: { name: '', gst_no: '', pan_no: '', party_type: 'Customer', address: '' },
+                lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', lorry_no: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false },
+                challanForm: { challan_no: '', date: new Date().toISOString().split('T')[0], origin: '', destination: '', lorry_no: '', vendor_id: '', driver_name: 'Driver', license_no: 'N/A', driver_phone: '0000', chassis_engine_no: 'N/A', vendor_freight: 0, advance_paid: 0, payable_at: 'Ahmedabad', apply_tds: true, bilty_ids: [] },
+                billingForm: { party_id: '', bill_no: '', date: new Date().toISOString().split('T')[0], bilty_ids: [], bank_name: 'HDFC', account_no: '123', ifsc_code: 'HDFC', branch: 'Main' },
+                paymentForm: { date: new Date().toISOString().split('T')[0], party_id: '', invoice_id: '', amount_received: 0, payment_mode: 'NEFT', utr_no: '' },
+                vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '' },
+                expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '' },
+                isGenerating: false,
+                pastInvoices: [],
+                unpaidInvoices: [],
+                unpaidChallans: [],
+
+                async fetchUnpaidInvoices() {
+                    this.paymentForm.invoice_id = '';
+                    this.paymentForm.amount_received = 0;
+                    if(!this.paymentForm.party_id) { this.unpaidInvoices = []; return; }
+                    try {
+                        this.unpaidInvoices = await this.apiCall(`/api/parties/${this.paymentForm.party_id}/unpaid_invoices`);
+                    } catch(e) {}
+                },
+                
+                selectUnpaidInvoice() {
+                    if(!this.paymentForm.invoice_id) {
+                        this.paymentForm.amount_received = 0;
+                        return;
+                    }
+                    const inv = this.unpaidInvoices.find(i => i.id == this.paymentForm.invoice_id);
+                    if(inv) this.paymentForm.amount_received = inv.balance;
+                },
+
+                formatDate(d) {
+                    if(!d) return '';
+                    const parts = d.split('-');
+                    if(parts.length !== 3) return d;
+                    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                },
+                
+                async recordPayment() {
+                    if(!this.paymentForm.party_id || this.paymentForm.amount_received <= 0) {
+                        this.showToast('Select a customer and enter a valid amount', 'error'); return;
+                    }
+                    // if invoice_id is empty string, convert to null
+                    const payload = { ...this.paymentForm, invoice_id: this.paymentForm.invoice_id || null };
+                    try {
+                        await this.apiCall('/api/payments', { method: 'POST', body: JSON.stringify(payload) });
+                        this.showToast('Payment Recorded Successfully!');
+                        this.paymentForm.amount_received = 0;
+                        this.paymentForm.utr_no = '';
+                        this.paymentForm.invoice_id = '';
+                        this.fetchUnpaidInvoices(); // Refresh dropdown
+                        this.loadDashboard();
+                    } catch(e) { this.showToast('Error recording payment', 'error'); }
+                },
+
+                async fetchUnpaidChallans() {
+                    this.vendorPaymentForm.challan_id = '';
+                    this.vendorPaymentForm.amount_paid = 0;
+                    if(!this.vendorPaymentForm.vendor_id) { this.unpaidChallans = []; return; }
+                    try {
+                        this.unpaidChallans = await this.apiCall(`/api/parties/${this.vendorPaymentForm.vendor_id}/unpaid_challans`);
+                    } catch(e) {}
+                },
+                
+                selectUnpaidChallan() {
+                    if(!this.vendorPaymentForm.challan_id) {
+                        this.vendorPaymentForm.amount_paid = 0; return;
+                    }
+                    const ch = this.unpaidChallans.find(c => c.id == this.vendorPaymentForm.challan_id);
+                    if(ch) this.vendorPaymentForm.amount_paid = ch.balance;
+                },
+
+                async recordVendorPayment() {
+                    if(!this.vendorPaymentForm.vendor_id || this.vendorPaymentForm.amount_paid <= 0) {
+                        this.showToast('Select a vendor and enter a valid amount', 'error'); return;
+                    }
+                    const payload = { ...this.vendorPaymentForm, challan_id: this.vendorPaymentForm.challan_id || null };
+                    try {
+                        await this.apiCall('/api/vendor_payments', { method: 'POST', body: JSON.stringify(payload) });
+                        this.showToast('Vendor Payment Recorded!');
+                        this.vendorPaymentForm.amount_paid = 0;
+                        this.vendorPaymentForm.utr_no = '';
+                        this.vendorPaymentForm.challan_id = '';
+                        this.fetchUnpaidChallans(); 
+                        this.loadDashboard();
+                    } catch(e) { this.showToast('Error recording payment', 'error'); }
+                },
+
+                async recordExpense() {
+                    if(this.expenseForm.amount <= 0 || !this.expenseForm.description) {
+                        this.showToast('Enter description and valid amount', 'error'); return;
+                    }
+                    const payload = { ...this.expenseForm, challan_id: this.expenseForm.challan_id || null };
+                    try {
+                        await this.apiCall('/api/expenses', { method: 'POST', body: JSON.stringify(payload) });
+                        this.showToast('Expense Recorded!');
+                        this.expenseForm.amount = 0;
+                        this.expenseForm.description = '';
+                        this.loadDashboard();
+                    } catch(e) { this.showToast('Error recording expense', 'error'); }
+                },
+
+                initApp() { if (this.token) this.loadInitialData(); },
+                
+                async deleteParty(id) {
+                    if(!confirm('Are you sure you want to delete this Party?')) return;
+                    try {
+                        await this.apiCall(`/api/parties/${id}`, { method: 'DELETE' });
+                        this.showToast('Party deleted');
+                        this.loadParties();
+                    } catch(e) {
+                        this.showToast('Error: Cannot delete Party. It may be linked to existing Consignments.', 'error');
+                    }
+                },
+
+                async deleteBilty(id) {
+                    if(!confirm('Are you sure you want to delete this LR?')) return;
+                    try {
+                        await this.apiCall(`/api/bilties/${id}`, { method: 'DELETE' });
+                        this.showToast('LR deleted');
+                        this.fetchAvailableBilties();
+                        this.fetchUnbilled();
+                    } catch(e) {
+                        this.showToast('Error: Cannot delete LR. It may be linked to a Challan or Invoice.', 'error');
+                    }
+                },
+                
+                async deleteInvoice(id) {
+                    if(!confirm('Are you sure you want to delete this Invoice? The LRs will become unbilled again.')) return;
+                    try {
+                        await this.apiCall(`/api/invoices/${id}`, { method: 'DELETE' });
+                        this.showToast('Invoice deleted successfully');
+                        this.loadInvoices();
+                        this.loadDashboard();
+                        this.fetchUnbilled(); // If currently viewing billing tab
+                    } catch(e) {
+                        this.showToast(e.message || 'Error deleting invoice', 'error');
+                    }
+                },
+                
+                async resetDatabase() {
+                    if(prompt('WARNING: This will delete ALL data (Parties, LRs, Challans, Invoices, Payments). Type "DELETE" to confirm:') !== 'DELETE') return;
+                    try {
+                        await this.apiCall('/api/reset_database', { method: 'DELETE' });
+                        this.showToast('Database wiped successfully!', 'success');
+                        this.loadInitialData();
+                        this.activeTab = 'dashboard';
+                    } catch(e) {
+                        this.showToast(e.message || 'Error wiping database', 'error');
+                    }
+                },
+                
+                switchTab(id) {
+                    this.activeTab = id;
+                    if(id === 'dashboard') this.loadDashboard();
+                    if(id === 'dispatch') this.fetchAvailableBilties();
+                    if(id === 'billing') this.loadInvoices();
+                },
+
+                showToast(message, type = 'success') {
+                    const id = Date.now();
+                    this.toasts.push({ id, message, type, show: true });
+                    setTimeout(() => {
+                        const t = this.toasts.find(x => x.id === id);
+                        if (t) t.show = false;
+                        setTimeout(() => this.toasts = this.toasts.filter(x => x.id !== id), 300);
+                    }, 3000);
+                },
+
+                async apiCall(url, options = {}) {
+                    options.headers = { ...options.headers, 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' };
+                    const res = await fetch(url, options);
+                    if (res.status === 401) { this.logout(); throw new Error("Unauthorized"); }
+                    if (!res.ok) throw new Error(await res.text());
+                    return res.json();
+                },
+
+                async login() {
+                    const formData = new URLSearchParams();
+                    formData.append('username', this.loginForm.username);
+                    formData.append('password', this.loginForm.password);
+                    try {
+                        const res = await fetch('/token', { method: 'POST', body: formData });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.token = data.access_token;
+                            this.role = data.role;
+                            localStorage.setItem('token', this.token);
+                            localStorage.setItem('role', this.role);
+                            this.showToast('Welcome back!');
+                            this.loadInitialData();
+                        } else this.showToast('Invalid credentials', 'error');
+                    } catch (e) { this.showToast('Server error', 'error'); }
+                },
+
+                logout() { this.token = null; this.role = 'User'; localStorage.removeItem('token'); localStorage.removeItem('role'); },
+                async loadInitialData() { this.loadParties(); this.loadDashboard(); this.loadInvoices(); },
+                async loadInvoices() { try { this.pastInvoices = await this.apiCall('/api/invoices'); } catch(e) {} },
+                async loadParties() { try { this.parties = await this.apiCall('/api/parties'); } catch (e) {} },
+
+                async createParty() {
+                    try {
+                        await this.apiCall('/api/parties', { method: 'POST', body: JSON.stringify(this.partyForm) });
+                        this.showToast('Party added successfully');
+                        this.partyForm.name = ''; this.partyForm.gst_no = ''; this.partyForm.pan_no = '';
+                        this.loadParties();
+                    } catch(e) { this.showToast('Error saving party', 'error'); }
+                },
+
+                async createLR() {
+                    try {
+                        await this.apiCall('/api/bilties', { method: 'POST', body: JSON.stringify(this.lrForm) });
+                        this.showToast('Bilty Saved!');
+                        this.lrForm.lr_no = ''; this.lrForm.charged_weight = 0; this.lrForm.rate = 0;
+                        this.fetchAvailableBilties(); // Update available for dispatch
+                    } catch(e) { this.showToast('Error saving Bilty', 'error'); }
+                },
+
+                async fetchAvailableBilties() {
+                    try {
+                        const all = await this.apiCall('/api/bilties');
+                        // Available for dispatch if NOT attached to a challan yet
+                        this.availableBilties = all.filter(b => b.challan_id === null);
+                        this.challanForm.bilty_ids = [];
+                    } catch(e) {}
+                },
+
+                async createChallan() {
+                    if (this.challanForm.bilty_ids.length === 0) { this.showToast('Select at least one Bilty', 'error'); return; }
+                    try {
+                        await this.apiCall('/api/challans', { method: 'POST', body: JSON.stringify(this.challanForm) });
+                        this.showToast('Challan Dispatched! Bilties are now Accounts Receivable.');
+                        this.challanForm.challan_no = '';
+                        this.fetchAvailableBilties();
+                        this.loadDashboard(); // Update dashboard
+                    } catch(e) { this.showToast('Error saving Challan', 'error'); }
+                },
+
+                async loadDashboard() {
+                    try {
+                        const data = await this.apiCall('/api/reports/dashboard');
+                        this.dashboard = data;
+                        this.renderChart();
+                    } catch(e) {}
+                },
+
+                renderChart() {
+                    const ctx = document.getElementById('revenueChart');
+                    if(!ctx) return;
+                    if(chartInstance) chartInstance.destroy();
+                    chartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: this.dashboard.revenue_labels.length ? this.dashboard.revenue_labels : ['No Data'],
+                            datasets: [{ label: 'Revenue (₹)', data: this.dashboard.revenue_data.length ? this.dashboard.revenue_data : [0], backgroundColor: ['#1e3a8a', '#3b82f6', '#93c5fd', '#60a5fa'] }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: {size: 10} } } } }
+                    });
+                },
+
+                async fetchUnbilled() {
+                    this.billingForm.bilty_ids = [];
+                    if(!this.billingForm.party_id) { this.unbilledLRs = []; return; }
+                    try {
+                        this.unbilledLRs = await this.apiCall(`/api/bilties/unbilled/${this.billingForm.party_id}`);
+                    } catch(e) { this.showToast('Error fetching trips', 'error'); }
+                },
+
+                async generateInvoice() {
+                    if(this.billingForm.bilty_ids.length === 0) { this.showToast('Select at least one trip', 'error'); return; }
+                    this.isGenerating = true;
+                    try {
+                        const inv = await this.apiCall('/api/invoices', { method: 'POST', body: JSON.stringify(this.billingForm) });
+                        this.showToast('Invoice Generated!');
+                        
+                        // Setup Print Template matching PDF details exactly
+                        const party = this.parties.find(p => p.id == this.billingForm.party_id);
+                        document.getElementById('print_cust_name').innerText = party.name;
+                        document.getElementById('print_cust_address').innerText = party.address || '-';
+                        document.getElementById('print_cust_gst').innerText = party.gst_no || 'URD';
+                        document.getElementById('print_inv_no').innerText = inv.bill_no;
+                        document.getElementById('print_inv_date').innerText = this.formatDate(inv.date);
+                        document.getElementById('print_inv_total').innerText = (inv.total_amount || 0).toFixed(2);
+                        document.getElementById('print_inv_net').innerText = (inv.net_amount || 0).toFixed(2);
+                        document.getElementById('print_inv_words').innerText = inv.amount_in_words;
+                        
+                        let rows = '';
+                        let i = 1;
+                        this.unbilledLRs.filter(lr => this.billingForm.bilty_ids.includes(lr.id.toString())).forEach(lr => {
+                            rows += `<tr style="border-bottom: 1px solid black;">
+                                <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.lr_no}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${this.formatDate(lr.date)}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.lorry_no || '-'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.origin || 'As Per LR'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.destination || lr.delivery_address || 'As Per LR'}</td>
+                                <td style="border-right: 2px solid black; padding: 5px;">${lr.description || 'Goods'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.packages || '-'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.actual_weight || lr.charged_weight}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.charged_weight}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.is_fixed_rate ? 'Fixed' : lr.rate}</td>
+                                <td style="padding: 5px; text-align: right;">${(lr.total_freight_charges || 0).toFixed(2)}</td>
+                            </tr>`;
+                        });
+                        
+                        while(i <= 2) {
+                            rows += `<tr style="border-bottom: 1px solid black; height: 25px;">
+                                <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 2px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="padding: 5px;"></td>
+                            </tr>`;
+                        }
+
+                        document.getElementById('print_inv_body').innerHTML = rows;
+                        
+                        setTimeout(() => window.print(), 500);
+                        
+                        this.billingForm.bill_no = '';
+                        this.fetchUnbilled();
+                        this.loadDashboard();
+                        this.loadInvoices();
+                    } catch(e) { 
+                        let msg = 'Error: Bill No may already exist.';
+                        try {
+                            const errObj = JSON.parse(e.message);
+                            if(errObj.detail) msg = errObj.detail;
+                        } catch(ex) {
+                            if(e.message) msg = e.message;
+                        }
+                        this.showToast(msg, 'error'); 
+                    } finally { 
+                        this.isGenerating = false; 
+                    }
+                },
+                
+                async reprintInvoice(inv) {
+                    try {
+                        const bilties = await this.apiCall(`/api/invoices/${inv.id}/bilties`);
+                        const party = this.parties.find(p => p.id == inv.party_id);
+                        
+                        document.getElementById('print_cust_name').innerText = party.name;
+                        document.getElementById('print_cust_address').innerText = party.address || '-';
+                        document.getElementById('print_cust_gst').innerText = party.gst_no || 'URD';
+                        document.getElementById('print_inv_no').innerText = inv.bill_no;
+                        document.getElementById('print_inv_date').innerText = this.formatDate(inv.date);
+                        document.getElementById('print_inv_total').innerText = (inv.total_amount || 0).toFixed(2);
+                        document.getElementById('print_inv_net').innerText = (inv.net_amount || 0).toFixed(2);
+                        document.getElementById('print_inv_words').innerText = inv.amount_in_words;
+                        
+                        let rows = '';
+                        let i = 1;
+                        bilties.forEach(lr => {
+                            rows += `<tr style="border-bottom: 1px solid black;">
+                                <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.lr_no}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${this.formatDate(lr.date)}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.lorry_no || '-'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.origin || 'As Per LR'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.destination || lr.delivery_address || 'As Per LR'}</td>
+                                <td style="border-right: 2px solid black; padding: 5px;">${lr.description || 'Goods'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.packages || '-'}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.actual_weight || lr.charged_weight}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.charged_weight}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;">${lr.is_fixed_rate ? 'Fixed' : lr.rate}</td>
+                                <td style="padding: 5px; text-align: right;">${(lr.total_freight_charges || 0).toFixed(2)}</td>
+                            </tr>`;
+                        });
+                        
+                        while(i <= 2) {
+                            rows += `<tr style="border-bottom: 1px solid black; height: 25px;">
+                                <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 2px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="border-right: 1px solid black; padding: 5px;"></td>
+                                <td style="padding: 5px;"></td>
+                            </tr>`;
+                        }
+
+                        document.getElementById('print_inv_body').innerHTML = rows;
+                        
+                        setTimeout(() => window.print(), 500);
+                    } catch(e) {
+                        this.showToast('Error fetching invoice details', 'error');
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
