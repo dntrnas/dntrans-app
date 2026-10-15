@@ -1,0 +1,15 @@
+{
+  "name": "GTA Management System",
+  "short_name": "GTA App",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3261/3261304.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
