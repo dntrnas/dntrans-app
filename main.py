@@ -335,6 +335,61 @@ def create_challan(challan: ChallanCreate, db: Session = Depends(get_db), user: 
     db.refresh(db_challan)
     return db_challan
 
+@app.get("/api/challans")
+def get_challans(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    challans = db.query(models.Challan).order_by(models.Challan.id.desc()).limit(50).all()
+    res = []
+    for ch in challans:
+        res.append({
+            "id": ch.id,
+            "challan_no": ch.challan_no,
+            "date": ch.date.isoformat() if ch.date else "",
+            "origin": ch.origin,
+            "destination": ch.destination,
+            "lorry_no": ch.lorry_no,
+            "vendor_id": ch.vendor_id,
+            "vendor_name": ch.vendor.name if ch.vendor else "Unknown Vendor",
+            "driver_name": ch.driver_name,
+            "total_freight": ch.total_freight,
+            "advance_paid": ch.advance_paid,
+            "balance_freight": ch.balance_freight,
+            "tds_amount": ch.tds_amount,
+            "net_payable": ch.net_payable,
+            "lr_count": len(ch.bilties),
+            "lr_nos": [b.lr_no for b in ch.bilties]
+        })
+    return res
+
+@app.delete("/api/challans/{challan_id}")
+def delete_challan(challan_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if user.role != "SuperAdmin":
+        raise HTTPException(status_code=403, detail="Only SuperAdmin can delete challans")
+    
+    challan = db.query(models.Challan).filter(models.Challan.id == challan_id).first()
+    if not challan:
+        raise HTTPException(status_code=404, detail="Challan not found")
+        
+    v_payments = db.query(models.VendorPayment).filter(models.VendorPayment.challan_id == challan_id).first()
+    if v_payments:
+        raise HTTPException(status_code=400, detail="Cannot delete Challan because vendor payout payments have already been recorded against it. Delete the payout records first.")
+        
+    bilties = db.query(models.Bilty).filter(models.Bilty.challan_id == challan_id).all()
+    for b in bilties:
+        if b.invoice_id is not None:
+            raise HTTPException(status_code=400, detail=f"Cannot delete Challan because LR #{b.lr_no} is already attached to an invoice. Delete the customer invoice first.")
+            
+    expenses = db.query(models.Expense).filter(models.Expense.challan_id == challan_id).all()
+    for exp in expenses:
+        exp.challan_id = None
+        
+    # Unlink all attached Bilties so they revert to undelivered / undispatched status
+    for b in bilties:
+        b.challan_id = None
+        
+    db.delete(challan)
+    db.commit()
+    return {"message": "Challan deleted successfully. Associated Bilties are now available for dispatch again."}
+
 @app.post("/api/invoices")
 def create_invoice(invoice: InvoiceCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     bilties = db.query(models.Bilty).filter(models.Bilty.id.in_(invoice.bilty_ids)).all()

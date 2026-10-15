@@ -437,6 +437,49 @@
 
                     <button type="submit" class="w-full bg-orange-500 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-600 transition">Save & Dispatch Challan</button>
                 </form>
+
+                <!-- RECENTLY DISPATCHED CHALLANS LIST -->
+                <div class="mt-8">
+                    <h3 class="text-lg font-bold mb-3 flex items-center justify-between">
+                        <span>Recently Dispatched Challans</span>
+                        <span class="text-xs font-normal text-gray-500" x-text="pastChallans.length + ' challan(s)'"></span>
+                    </h3>
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <template x-for="ch in pastChallans" :key="ch.id">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between py-3 border-b last:border-0 gap-3">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-bold text-sm text-blue-900">Challan #<span x-text="ch.challan_no"></span></span>
+                                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold" x-text="ch.lorry_no"></span>
+                                        <span class="text-gray-400 text-xs">(<span x-text="formatDate(ch.date)"></span>)</span>
+                                    </div>
+                                    <p class="text-xs text-gray-600 mt-1">
+                                        Route: <span class="font-medium" x-text="ch.origin + ' → ' + ch.destination"></span> | 
+                                        Vendor: <span class="font-semibold text-gray-800" x-text="ch.vendor_name"></span>
+                                        <template x-if="ch.driver_name">
+                                            <span class="text-gray-500"> (Driver: <span x-text="ch.driver_name"></span>)</span>
+                                        </template>
+                                    </p>
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mt-1 text-gray-600">
+                                        <span>Total Freight: <b class="text-gray-800">₹<span x-text="(ch.total_freight || 0).toFixed(2)"></span></b></span>
+                                        <template x-if="ch.advance_paid > 0">
+                                            <span class="text-orange-600">Adv: <b>₹<span x-text="(ch.advance_paid || 0).toFixed(2)"></span></b></span>
+                                        </template>
+                                        <span class="text-green-700 font-bold">Net Payable: ₹<span x-text="(ch.net_payable || 0).toFixed(2)"></span></span>
+                                        <span class="text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded border border-purple-100" x-text="(ch.lr_count || 0) + ' LRs: ' + (ch.lr_nos ? ch.lr_nos.join(', ') : '')"></span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button x-show="role === 'SuperAdmin'" @click="deleteChallan(ch.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded shadow-sm border border-red-200 transition font-bold flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        Delete Challan
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="pastChallans.length === 0" class="text-center text-xs text-gray-500 py-4 italic">No dispatched challans found.</div>
+                    </div>
+                </div>
             </div>
 
             <!-- BILLING TAB -->
@@ -724,6 +767,7 @@
                 expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '' },
                 isGenerating: false,
                 pastInvoices: [],
+                pastChallans: [],
                 unpaidInvoices: [],
                 unpaidChallans: [],
 
@@ -853,6 +897,27 @@
                         this.showToast(e.message || 'Error deleting invoice', 'error');
                     }
                 },
+
+                async deleteChallan(id) {
+                    if(!confirm('Are you sure you want to delete this Challan? All attached LRs will become undispatched and show in the dispatch option again.')) return;
+                    try {
+                        await this.apiCall(`/api/challans/${id}`, { method: 'DELETE' });
+                        this.showToast('Challan deleted! Attached LRs are now available for dispatch again.');
+                        this.loadChallans();
+                        this.fetchAvailableBilties();
+                        this.loadDashboard();
+                        this.fetchUnbilled();
+                    } catch(e) {
+                        let msg = 'Error deleting challan';
+                        try {
+                            const errObj = JSON.parse(e.message);
+                            if (errObj.detail) msg = errObj.detail;
+                        } catch(_) {
+                            if (e.message) msg = e.message;
+                        }
+                        this.showToast(msg, 'error');
+                    }
+                },
                 
                 async resetDatabase() {
                     if(prompt('WARNING: This will delete ALL data (Parties, LRs, Challans, Invoices, Payments). Type "DELETE" to confirm:') !== 'DELETE') return;
@@ -960,7 +1025,7 @@
                 switchTab(id) {
                     this.activeTab = id;
                     if(id === 'dashboard') this.loadDashboard();
-                    if(id === 'dispatch') this.fetchAvailableBilties();
+                    if(id === 'dispatch') { this.fetchAvailableBilties(); this.loadChallans(); }
                     if(id === 'billing') this.loadInvoices();
                 },
 
@@ -1001,8 +1066,9 @@
                 },
 
                 logout() { this.token = null; this.role = 'User'; localStorage.removeItem('token'); localStorage.removeItem('role'); },
-                async loadInitialData() { this.loadParties(); this.loadDashboard(); this.loadInvoices(); },
+                async loadInitialData() { this.loadParties(); this.loadDashboard(); this.loadInvoices(); this.loadChallans(); },
                 async loadInvoices() { try { this.pastInvoices = await this.apiCall('/api/invoices'); } catch(e) {} },
+                async loadChallans() { try { this.pastChallans = await this.apiCall('/api/challans'); } catch(e) {} },
                 async loadParties() { try { this.parties = await this.apiCall('/api/parties'); } catch (e) {} },
 
                 async createParty() {
@@ -1039,6 +1105,7 @@
                         this.showToast('Challan Dispatched! Bilties are now Accounts Receivable.');
                         this.challanForm.challan_no = '';
                         this.fetchAvailableBilties();
+                        this.loadChallans();
                         this.loadDashboard(); // Update dashboard
                     } catch(e) { this.showToast('Error saving Challan', 'error'); }
                 },
