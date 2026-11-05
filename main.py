@@ -188,6 +188,7 @@ class BiltyCreate(BaseModel):
     charged_weight: float
     rate: float
     is_fixed_rate: bool = False
+    is_direct_lr: Optional[bool] = False
     mazdoor_charges: float = 0.0
     sur_charges: float = 0.0
     st_charges: float = 0.0
@@ -261,6 +262,10 @@ NON_CASH_VCH_TYPES = {
     "Discount/Rebate Received": "Discount Recd",
     "Setoff / Discount (Settled in Full)": "Setoff Gain",
     "Extra Charges / Halting Paid": "Extra Halting",
+    "Cash Refund": "Receipt",
+    "Bank / NEFT Refund": "Receipt",
+    "Vendor Advance Recovery": "Advance Recv",
+    "Settlement / Setoff": "Setoff",
 }
 
 # --- ENDPOINTS ---
@@ -325,7 +330,10 @@ def create_bilty(bilty: BiltyCreate, db: Session = Depends(get_db), user: models
     else:
         total_freight = (bilty.charged_weight * bilty.rate) + bilty.mazdoor_charges + bilty.sur_charges + bilty.st_charges
         
-    bilty_data = bilty.dict()
+    bilty_data = bilty.dict(exclude={'is_direct_lr'})
+    if not bilty_data.get('origin'): bilty_data['origin'] = 'Ahmedabad'
+    if not bilty_data.get('destination'): bilty_data['destination'] = '-'
+    if not bilty_data.get('lorry_no'): bilty_data['lorry_no'] = '-'
     bilty_data['total_freight_charges'] = total_freight
     db_bilty = models.Bilty(**bilty_data)
     db.add(db_bilty)
@@ -350,13 +358,11 @@ def delete_bilty(bilty_id: int, db: Session = Depends(get_db), user: models.User
     return {"message": "Consignment (LR) deleted"}
 
 def calculate_tds(pan_no: str, freight: float, apply_tds: bool):
-    if not apply_tds or not pan_no or len(pan_no) < 4:
+    if not apply_tds or freight <= 0:
         return 0.0, 0.0
-    pan_type = pan_no[3].upper()
+    pan_type = pan_no[3].upper() if pan_no and len(pan_no) >= 4 else 'P'
     rate = 0.01 if pan_type in ['P', 'H'] else 0.02
-    if freight > 30000:
-        return freight * rate, rate
-    return 0.0, 0.0
+    return round(freight * rate, 2), rate
 
 @app.post("/api/challans")
 def create_challan(challan: ChallanCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
@@ -656,7 +662,19 @@ def get_dashboard_analytics(db: Session = Depends(get_db), user: models.User = D
                     "party_name": party.name,
                     "unbilled": unbilled,
                     "billed": billed - payments,
-                    "net": net_exposure
+                    "net": round(net_exposure, 2),
+                    "balance_type": "Receivable",
+                    "is_advance": False
+                })
+            elif net_exposure < -0.50:
+                outstanding_results.append({
+                    "party_id": party.id,
+                    "party_name": party.name,
+                    "unbilled": unbilled,
+                    "billed": billed - payments,
+                    "net": round(net_exposure, 2),
+                    "balance_type": "Advance (Cr)",
+                    "is_advance": True
                 })
             elif has_transactions and abs(net_exposure) <= 0.50:
                 cleared_accounts.append({
@@ -671,14 +689,29 @@ def get_dashboard_analytics(db: Session = Depends(get_db), user: models.User = D
         if party.party_type == 'Vendor':
             vendor_challans = db.query(func.sum(models.Challan.net_payable)).filter(models.Challan.vendor_id == party.id).scalar() or 0.0
             vendor_payments = db.query(func.sum(models.VendorPayment.amount_paid)).filter(models.VendorPayment.vendor_id == party.id).scalar() or 0.0
-            net_vendor_exposure = vendor_challans - vendor_payments
+            vendor_refunds = db.query(func.sum(models.Payment.amount_received)).filter(models.Payment.party_id == party.id).scalar() or 0.0
+            # Net vendor exposure: Payable to vendor = (Challan net payable + Refunds received) - Vendor payments made
+            net_vendor_exposure = (vendor_challans + vendor_refunds) - vendor_payments
             
-            has_transactions = vendor_challans > 0 or vendor_payments > 0
+            gross_freight = db.query(func.sum(models.Challan.total_freight)).filter(models.Challan.vendor_id == party.id).scalar() or 0.0
+            adv_paid = db.query(func.sum(models.Challan.advance_paid)).filter(models.Challan.vendor_id == party.id).scalar() or 0.0
+            has_transactions = gross_freight > 0 or adv_paid > 0 or vendor_payments > 0 or vendor_refunds > 0
+            
             if net_vendor_exposure > 0.50:
                 vendor_outstanding_results.append({
                     "party_id": party.id,
                     "party_name": party.name,
-                    "net": net_vendor_exposure
+                    "net": round(net_vendor_exposure, 2),
+                    "balance_type": "Payable",
+                    "is_advance": False
+                })
+            elif net_vendor_exposure < -0.50:
+                vendor_outstanding_results.append({
+                    "party_id": party.id,
+                    "party_name": party.name,
+                    "net": round(net_vendor_exposure, 2),
+                    "balance_type": "Advance (Dr)",
+                    "is_advance": True
                 })
             elif has_transactions and abs(net_vendor_exposure) <= 0.50:
                 cleared_accounts.append({
@@ -785,16 +818,28 @@ def get_party_tally_ledger(party_id: int, db: Session = Depends(get_db), user: m
     elif party.party_type == 'Vendor':
         challans = db.query(models.Challan).filter(models.Challan.vendor_id == party_id).all()
         for ch in challans:
-            freight_after_tds = ch.total_freight - ch.tds_amount
+            # Gross Lorry Hire booked as Purchase (Credit)
             rows.append({
                 "date": ch.date.isoformat(),
                 "vch_type": "Purchase",
                 "vch_no": ch.challan_no,
-                "particulars": f"By Lorry Hire (Challan #{ch.challan_no})",
+                "particulars": f"By Gross Lorry Hire (Challan #{ch.challan_no})",
                 "debit": 0.0,
-                "credit": freight_after_tds
+                "credit": ch.total_freight
             })
-            if ch.advance_paid > 0:
+            # Explicit TDS Deduction line (Debit)
+            if ch.tds_amount and ch.tds_amount > 0:
+                tds_pct = int(round(ch.tds_rate * 100)) if ch.tds_rate else 1
+                rows.append({
+                    "date": ch.date.isoformat(),
+                    "vch_type": "TDS Deduction",
+                    "vch_no": ch.challan_no,
+                    "particulars": f"To TDS Deducted u/s 194C @ {tds_pct}% (Challan #{ch.challan_no})",
+                    "debit": ch.tds_amount,
+                    "credit": 0.0
+                })
+            # Advance Paid line (Debit)
+            if ch.advance_paid and ch.advance_paid > 0:
                 rows.append({
                     "date": ch.date.isoformat(),
                     "vch_type": "Payment (Adv)",
@@ -817,12 +862,30 @@ def get_party_tally_ledger(party_id: int, db: Session = Depends(get_db), user: m
             else:
                 particulars = f"To Bank/Cash Payment{ch_ref}"
             rows.append({
+                "id": pay.id,
+                "entry_type": "vendor_payment",
                 "date": pay.date.isoformat(),
                 "vch_type": vch_type,
                 "vch_no": pay.utr_no or "-",
                 "particulars": particulars,
                 "debit": pay.amount_paid,
                 "credit": 0.0
+            })
+
+        # Receipts / refunds / recoveries received from vendor (models.Payment)
+        receipts = db.query(models.Payment).filter(models.Payment.party_id == party_id).all()
+        for rec in receipts:
+            vch_type = NON_CASH_VCH_TYPES.get(rec.payment_mode, "Receipt")
+            particulars = f"By {rec.payment_mode} (Advance Refund / Recovery)"
+            rows.append({
+                "id": rec.id,
+                "entry_type": "payment",
+                "date": rec.date.isoformat(),
+                "vch_type": vch_type,
+                "vch_no": rec.utr_no or "-",
+                "particulars": particulars,
+                "debit": 0.0,
+                "credit": rec.amount_received
             })
             
     # Sort chronologically
@@ -1155,7 +1218,8 @@ def excel_outstanding_summary(db: Session = Depends(get_db), user: models.User =
         ri += 1
     for o in dash['vendor_outstanding']:
         party = db.query(models.Party).filter(models.Party.id == o['party_id']).first()
-        vals = [o['party_name'], "Vendor", party.gst_no if party else "", party.pan_no if party else "", 0, o['net'], o['net'], "Outstanding"]
+        status_label = "Advance / Dr (Excess Paid)" if o.get('is_advance') else "Payable Outstanding"
+        vals = [o['party_name'], "Vendor", party.gst_no if party else "", party.pan_no if party else "", 0, o['net'], o['net'], status_label]
         for ci, v in enumerate(vals, 1):
             c = ws.cell(row=ri, column=ci, value=v); c.border = bdr
             if ci in [5,6,7]: c.number_format = '#,##0.00'

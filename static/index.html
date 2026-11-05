@@ -110,27 +110,49 @@
             <div x-show="activeTab === 'accounts'" class="space-y-6">
                 <h2 class="text-2xl font-bold mb-4">Accounts & Payments</h2>
                 
-                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4 border-green-500">
-                    <h3 class="font-bold text-green-700 mb-3 text-lg flex items-center gap-2">Record Payment Received (Customer)</h3>
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4" :class="receiptPartyType === 'Customer' ? 'border-green-500' : 'border-amber-500'">
+                    <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+                        <h3 class="font-bold text-lg flex items-center gap-2" :class="receiptPartyType === 'Customer' ? 'text-green-700' : 'text-amber-800'">
+                            <span x-text="receiptPartyType === 'Customer' ? 'Record Payment Received (Customer)' : 'Settle Vendor Advance / Negative Balance (Vendor)'"></span>
+                        </h3>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="font-bold text-gray-500">Party Type:</span>
+                            <div class="inline-flex rounded-lg border border-gray-300 p-0.5 bg-gray-100">
+                                <button type="button" @click="receiptPartyType = 'Customer'; onReceiptPartyTypeChange()" class="px-3 py-1 rounded font-bold text-xs transition" :class="receiptPartyType === 'Customer' ? 'bg-green-600 text-white shadow' : 'text-gray-600 hover:text-gray-900'">
+                                    Customer
+                                </button>
+                                <button type="button" @click="receiptPartyType = 'Vendor'; onReceiptPartyTypeChange()" class="px-3 py-1 rounded font-bold text-xs transition flex items-center gap-1" :class="receiptPartyType === 'Vendor' ? 'bg-amber-600 text-white shadow' : 'text-gray-600 hover:text-gray-900'">
+                                    Vendor Advance Settle
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     <form @submit.prevent="recordPayment" class="space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label class="text-[10px] font-bold text-gray-500 uppercase">Customer</label>
-                                <select x-model="paymentForm.party_id" @change="fetchUnpaidInvoices" class="w-full px-4 py-2 rounded border border-gray-300" required>
-                                    <option value="">Select Customer...</option>
-                                    <template x-for="p in parties.filter(p => p.party_type === 'Customer')" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase" x-text="receiptPartyType === 'Customer' ? 'Customer' : 'Vendor (Truck Owner)'"></label>
+                                <select x-model="paymentForm.party_id" @change="onReceiptPartySelect" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                                    <option value="" x-text="receiptPartyType === 'Customer' ? 'Select Customer...' : 'Select Vendor to Settle...'"></option>
+                                    <template x-for="p in getReceiptPartyList()" :key="p.id">
+                                        <option :value="p.id" x-text="p.displayName || p.name"></option>
+                                    </template>
                                 </select>
                             </div>
                             <div>
-                                <label class="text-[10px] font-bold text-gray-500 uppercase">Against Invoice</label>
-                                <select x-model="paymentForm.invoice_id" @change="selectUnpaidInvoice" class="w-full px-4 py-2 rounded border border-gray-300">
-                                    <option value="">Unallocated / Advance</option>
-                                    <template x-for="inv in unpaidInvoices" :key="inv.id"><option :value="inv.id" x-text="inv.bill_no + ' (Bal: ₹' + inv.balance + ')'"></option></template>
-                                </select>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Against</label>
+                                <template x-if="receiptPartyType === 'Customer'">
+                                    <select x-model="paymentForm.invoice_id" @change="selectUnpaidInvoice" class="w-full px-4 py-2 rounded border border-gray-300">
+                                        <option value="">Unallocated / Advance</option>
+                                        <template x-for="inv in unpaidInvoices" :key="inv.id"><option :value="inv.id" x-text="inv.bill_no + ' (Bal: ₹' + inv.balance + ')'"></option></template>
+                                    </select>
+                                </template>
+                                <template x-if="receiptPartyType === 'Vendor'">
+                                    <input type="text" readonly value="Vendor Advance Recovery / Negative Balance Settle" class="w-full px-4 py-2 rounded border border-gray-200 bg-gray-100 text-gray-700 text-sm font-semibold">
+                                </template>
                             </div>
                             <div>
-                                <label class="text-[10px] font-bold text-gray-500 uppercase">Amount Received (₹)</label>
-                                <input x-model.number="paymentForm.amount_received" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-green-700" required>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase" x-text="receiptPartyType === 'Customer' ? 'Amount Received (₹)' : 'Recovery / Settlement Amount (₹)'"></label>
+                                <input x-model.number="paymentForm.amount_received" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold" :class="receiptPartyType === 'Customer' ? 'text-green-700' : 'text-amber-800'" required>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -140,27 +162,37 @@
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-gray-500 uppercase">Mode</label>
-                                <select x-model="paymentForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300">
-                                    <option value="NEFT">NEFT/RTGS</option>
-                                    <option value="Cheque">Cheque</option>
-                                    <option value="Cash">Cash</option>
-                                    <option value="TDS Deduction">TDS Deduction (194C)</option>
-                                    <option value="Discount/Rebate Received">Discount / Rebate Received</option>
-                                    <option value="Round-Off">Round-Off Adjustment</option>
-                                    <option value="Other Adjustment">Other Adjustment / Non-Cash</option>
-                                    <option value="TDS Deducted by Customer">TDS Deducted by Customer (194C)</option>
-                                    <option value="Bad Debt Write-Off">Bad Debt Write-Off</option>
-                                    <option value="Discount/Rebate Given">Discount / Rebate Given</option>
-                                    <option value="Round-Off">Round-Off Adjustment</option>
-                                    <option value="Other Adjustment">Other Adjustment / Non-Cash</option>
-                                </select>
+                                <template x-if="receiptPartyType === 'Customer'">
+                                    <select x-model="paymentForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300">
+                                        <option value="NEFT">NEFT/RTGS</option>
+                                        <option value="Cheque">Cheque</option>
+                                        <option value="Cash">Cash</option>
+                                        <option value="TDS Deducted by Customer">TDS Deducted by Customer (194C)</option>
+                                        <option value="Bad Debt Write-Off">Bad Debt Write-Off</option>
+                                        <option value="Discount/Rebate Given">Discount / Rebate Given</option>
+                                        <option value="Round-Off">Round-Off Adjustment</option>
+                                        <option value="Other Adjustment">Other Adjustment / Non-Cash</option>
+                                    </select>
+                                </template>
+                                <template x-if="receiptPartyType === 'Vendor'">
+                                    <select x-model="paymentForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300 font-semibold text-gray-800">
+                                        <option value="Cash Refund">Cash Refund (Vendor Returned Cash)</option>
+                                        <option value="Bank / NEFT Refund">Bank / NEFT Refund (Transferred to Bank)</option>
+                                        <option value="Bad Debt Write-Off">Bad Debt Write-Off (Unrecoverable Advance)</option>
+                                        <option value="Round-Off">Round-Off Adjustment</option>
+                                        <option value="Setoff / Discount (Settled in Full)">Setoff / Discount (Settled in Full)</option>
+                                        <option value="Cheque">Cheque Refund</option>
+                                    </select>
+                                </template>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-gray-500 uppercase">Reference / UTR No.</label>
-                                <input x-model="paymentForm.utr_no" type="text" class="w-full px-4 py-2 rounded border border-gray-300">
+                                <input x-model="paymentForm.utr_no" type="text" placeholder="e.g. UTR12345 or Settlement Note" class="w-full px-4 py-2 rounded border border-gray-300">
                             </div>
                         </div>
-                        <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition">Save Payment & Update Ledger</button>
+                        <button type="submit" class="w-full font-bold py-3 rounded-lg shadow-md transition" :class="receiptPartyType === 'Customer' ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-amber-600 text-white hover:bg-amber-700'">
+                            <span x-text="receiptPartyType === 'Customer' ? 'Save Payment & Update Ledger' : 'Save Settlement & Clear Advance'"></span>
+                        </button>
                     </form>
                 </div>
                 
@@ -257,19 +289,43 @@
                     </template>
                 </div>
 
-                <h3 class="font-bold text-gray-700 mb-2 mt-6">Vendor Exposure Ledger (To Pay)</h3>
+                <div class="flex items-center justify-between mb-2 mt-6">
+                    <h3 class="font-bold text-gray-700">Vendor Exposure & Advance Ledger</h3>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="flex items-center gap-1 font-semibold text-red-700"><span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span> Payable (Cr)</span>
+                        <span class="flex items-center gap-1 font-semibold text-amber-700"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> Advance / Dr (Vendor Owes Us)</span>
+                    </div>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <template x-for="party in dashboard.vendor_outstanding">
-                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center border-l-4 border-red-500 cursor-pointer hover:shadow-md transition-transform hover:-translate-y-1" @click="openLedger(party, 'vendor')">
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-100 flex justify-between items-center cursor-pointer hover:shadow-md transition-transform hover:-translate-y-1" 
+                             :class="party.is_advance ? 'border-l-4 border-amber-500 bg-amber-50/20' : 'border-l-4 border-red-500'"
+                             @click="openLedger(party, 'vendor')">
                             <div>
-                                <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
+                                <div class="flex items-center gap-2">
+                                    <h4 class="font-bold text-gray-800 text-lg" x-text="party.party_name"></h4>
+                                    <template x-if="party.is_advance">
+                                        <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded border border-amber-200">Advance / Dr</span>
+                                    </template>
+                                </div>
+                                <template x-if="party.is_advance">
+                                    <button type="button" @click.stop="settleVendorAdvance(party)" class="mt-2 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded transition flex items-center gap-1 border border-amber-300">
+                                        ⚡ Settle / Recover Advance
+                                    </button>
+                                </template>
                             </div>
                             <div class="text-right">
-                                <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Payable Balance</p>
-                                <p class="font-black text-xl text-red-800">₹<span x-text="party.net.toFixed(2)"></span></p>
+                                <p class="text-[10px] uppercase tracking-wider mb-1" :class="party.is_advance ? 'text-amber-600 font-bold' : 'text-gray-400'" x-text="party.is_advance ? 'Vendor Owes Us (Dr)' : 'Payable Balance (Cr)'"></p>
+                                <p class="font-black text-xl" :class="party.is_advance ? 'text-amber-800' : 'text-red-800'">
+                                    ₹<span x-text="Math.abs(party.net).toFixed(2)"></span>
+                                    <span class="text-xs font-bold" x-text="party.is_advance ? ' Dr' : ' Cr'"></span>
+                                </p>
                             </div>
                         </div>
                     </template>
+                    <div x-show="!dashboard.vendor_outstanding || dashboard.vendor_outstanding.length === 0" class="col-span-2 text-center text-xs text-gray-400 py-4 italic bg-white rounded-lg border border-gray-100">
+                        No outstanding vendor balances. All accounts cleared.
+                    </div>
                 </div>
                 
                 <h3 class="font-bold text-gray-700 mb-2 mt-6">General Expense Ledger</h3>
@@ -350,7 +406,19 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Direct LR Checkbox Toggle -->
+                    <div class="flex items-center justify-between p-3 bg-blue-50/70 border border-blue-200 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="direct_lr_check" x-model="lrForm.is_direct_lr" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer">
+                            <label for="direct_lr_check" class="text-xs font-bold text-blue-900 cursor-pointer select-none">
+                                Direct LR Billing (Specify Truck & Route on LR directly)
+                            </label>
+                        </div>
+                        <span class="text-[11px] text-blue-600 font-medium" x-text="lrForm.is_direct_lr ? 'Route & Truck inputs visible' : 'Hidden (Route & Truck will be assigned at Challan Dispatch)'"></span>
+                    </div>
+
+                    <!-- Origin, Destination & Truck No. (Shown ONLY when Direct LR is checked) -->
+                    <div x-show="lrForm.is_direct_lr" x-transition class="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                         <div>
                             <label class="text-xs font-bold text-gray-500 uppercase">From (Origin)</label>
                             <input x-model="lrForm.origin" type="text" placeholder="e.g. Ahmedabad" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
@@ -474,6 +542,25 @@
                         <div class="flex items-center gap-2 mt-6">
                             <input type="checkbox" x-model="challanForm.apply_tds" id="apply_tds" class="w-5 h-5 text-blue-600 rounded">
                             <label for="apply_tds" class="font-bold text-gray-700">Apply TDS Deduction?</label>
+                        </div>
+                    </div>
+
+                    <!-- Live TDS and Balance Breakdown Banner -->
+                    <div x-show="challanForm.vendor_freight > 0" class="p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap items-center justify-between text-xs gap-2">
+                        <div><span class="text-gray-500 font-medium">Gross Freight:</span> <span class="font-bold text-gray-800">₹<span x-text="(challanForm.vendor_freight || 0).toFixed(2)"></span></span></div>
+                        <div>
+                            <span class="text-gray-500 font-medium">TDS Deduction (194C):</span> 
+                            <span class="font-bold" :class="challanForm.apply_tds ? 'text-amber-700' : 'text-gray-400'">
+                                <span x-text="challanForm.apply_tds ? '₹' + getEstimatedTds().toFixed(2) + ' (' + getEstimatedTdsRate() + ')' : 'None (0%)'"></span>
+                            </span>
+                        </div>
+                        <div><span class="text-gray-500 font-medium">Advance Paid:</span> <span class="font-bold text-blue-700">₹<span x-text="(challanForm.advance_paid || 0).toFixed(2)"></span></span></div>
+                        <div>
+                            <span class="text-gray-500 font-medium">Net Payable:</span> 
+                            <span class="font-black text-sm" :class="getEstimatedNetPayable() >= 0 ? 'text-green-700' : 'text-red-700'">
+                                ₹<span x-text="Math.abs(getEstimatedNetPayable()).toFixed(2)"></span>
+                                <span class="text-[10px]" x-text="getEstimatedNetPayable() >= 0 ? ' Cr (Payable)' : ' Dr (Advance Exceeds Freight!)'"></span>
+                            </span>
                         </div>
                     </div>
 
@@ -1126,11 +1213,12 @@
                 ledgerExpenses: [],
                 
                 partyForm: { name: '', gst_no: '', pan_no: '', party_type: 'Customer', address: '' },
-                lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], origin: 'Ahmedabad', destination: '', lorry_no: '', consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false, declared_value: null },
+                lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], origin: 'Ahmedabad', destination: '', lorry_no: '', consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false, declared_value: null, is_direct_lr: false },
                 challanForm: { challan_no: '', date: new Date().toISOString().split('T')[0], origin: '', destination: '', lorry_no: '', vendor_id: '', driver_name: 'Driver', license_no: 'N/A', driver_phone: '0000', chassis_engine_no: 'N/A', vendor_freight: 0, advance_paid: 0, payable_at: 'Ahmedabad', apply_tds: true, bilty_ids: [] },
                 billingForm: { party_id: '', bill_no: '', date: new Date().toISOString().split('T')[0], bilty_ids: [], bank_name: 'HDFC', account_no: '123', ifsc_code: 'HDFC', branch: 'Main', other_charges: [] },
                 reportPartyId: '',
                 reportVendorId: '',
+                receiptPartyType: 'Customer',
                 paymentForm: { date: new Date().toISOString().split('T')[0], party_id: '', invoice_id: '', amount_received: 0, payment_mode: 'NEFT', utr_no: '' },
                 vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '', setoff_remaining: false },
                 selectedChallanObj: null,
@@ -1168,19 +1256,101 @@
                     return `${parts[2]}-${parts[1]}-${parts[0]}`;
                 },
                 
+                getReceiptPartyList() {
+                    if (this.receiptPartyType === 'Customer') {
+                        return this.parties.filter(p => p.party_type === 'Customer');
+                    } else {
+                        return this.parties.filter(p => p.party_type === 'Vendor').map(v => {
+                            const vo = (this.dashboard.vendor_outstanding || []).find(o => o.party_id === v.id);
+                            let tag = '';
+                            if (vo && vo.is_advance) {
+                                tag = ` ⚠️ (Advance Due: ₹${Math.abs(vo.net).toFixed(2)} Dr)`;
+                            } else if (vo && !vo.is_advance) {
+                                tag = ` (Payable: ₹${vo.net.toFixed(2)} Cr)`;
+                            }
+                            return { ...v, displayName: v.name + tag, is_advance: !!(vo && vo.is_advance), adv_amount: vo && vo.is_advance ? Math.abs(vo.net) : 0 };
+                        });
+                    }
+                },
+
+                onReceiptPartyTypeChange() {
+                    this.paymentForm.party_id = '';
+                    this.paymentForm.invoice_id = '';
+                    this.paymentForm.amount_received = 0;
+                    this.unpaidInvoices = [];
+                    if (this.receiptPartyType === 'Vendor') {
+                        this.paymentForm.payment_mode = 'Cash Refund';
+                    } else {
+                        this.paymentForm.payment_mode = 'NEFT';
+                    }
+                },
+
+                onReceiptPartySelect() {
+                    if (this.receiptPartyType === 'Customer') {
+                        this.fetchUnpaidInvoices();
+                    } else {
+                        this.unpaidInvoices = [];
+                        this.paymentForm.invoice_id = '';
+                        const vo = (this.dashboard.vendor_outstanding || []).find(o => o.party_id == this.paymentForm.party_id);
+                        if (vo && vo.is_advance) {
+                            this.paymentForm.amount_received = Math.abs(vo.net);
+                            this.showToast(`Pre-filled advance recoverable amount ₹${Math.abs(vo.net).toFixed(2)} for vendor.`);
+                        } else {
+                            this.paymentForm.amount_received = 0;
+                        }
+                    }
+                },
+
+                settleVendorAdvance(party) {
+                    this.activeTab = 'accounts';
+                    this.receiptPartyType = 'Vendor';
+                    this.paymentForm.party_id = party.party_id;
+                    this.paymentForm.invoice_id = '';
+                    this.paymentForm.amount_received = Math.abs(party.net);
+                    this.paymentForm.payment_mode = 'Cash Refund';
+                    this.showToast(`Selected ${party.party_name} to settle advance of ₹${Math.abs(party.net).toFixed(2)}.`);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                getEstimatedTds() {
+                    if (!this.challanForm.apply_tds || !this.challanForm.vendor_freight) return 0;
+                    const vendor = this.parties.find(p => p.id == this.challanForm.vendor_id);
+                    const pan = vendor && vendor.pan_no ? vendor.pan_no.trim() : '';
+                    const panType = (pan.length >= 4) ? pan[3].toUpperCase() : 'P';
+                    const rate = ['P', 'H'].includes(panType) ? 0.01 : 0.02;
+                    return Math.round(this.challanForm.vendor_freight * rate * 100) / 100;
+                },
+
+                getEstimatedTdsRate() {
+                    const vendor = this.parties.find(p => p.id == this.challanForm.vendor_id);
+                    const pan = vendor && vendor.pan_no ? vendor.pan_no.trim() : '';
+                    const panType = (pan.length >= 4) ? pan[3].toUpperCase() : 'P';
+                    return ['P', 'H'].includes(panType) ? '1%' : '2%';
+                },
+
+                getEstimatedNetPayable() {
+                    const freight = this.challanForm.vendor_freight || 0;
+                    const adv = this.challanForm.advance_paid || 0;
+                    const tds = this.getEstimatedTds();
+                    return freight - adv - tds;
+                },
+
                 async recordPayment() {
                     if(!this.paymentForm.party_id || this.paymentForm.amount_received <= 0) {
-                        this.showToast('Select a customer and enter a valid amount', 'error'); return;
+                        this.showToast(this.receiptPartyType === 'Customer' ? 'Select a customer and enter a valid amount' : 'Select a vendor and enter settlement amount', 'error'); 
+                        return;
                     }
-                    // if invoice_id is empty string, convert to null
                     const payload = { ...this.paymentForm, invoice_id: this.paymentForm.invoice_id || null };
                     try {
                         await this.apiCall('/api/payments', { method: 'POST', body: JSON.stringify(payload) });
-                        this.showToast('Payment Recorded Successfully!');
+                        const successMsg = this.receiptPartyType === 'Customer' ? 'Payment Recorded Successfully!' : 'Vendor Advance Settled & Cleared!';
+                        this.showToast(successMsg);
                         this.paymentForm.amount_received = 0;
                         this.paymentForm.utr_no = '';
                         this.paymentForm.invoice_id = '';
-                        this.fetchUnpaidInvoices(); // Refresh dropdown
+                        if(this.receiptPartyType === 'Customer') {
+                            this.fetchUnpaidInvoices();
+                        }
                         this.loadDashboard();
                     } catch(e) { this.showToast('Error recording payment', 'error'); }
                 },
