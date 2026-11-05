@@ -144,6 +144,15 @@
                                     <option value="NEFT">NEFT/RTGS</option>
                                     <option value="Cheque">Cheque</option>
                                     <option value="Cash">Cash</option>
+                                    <option value="TDS Deduction">TDS Deduction (194C)</option>
+                                    <option value="Discount/Rebate Received">Discount / Rebate Received</option>
+                                    <option value="Round-Off">Round-Off Adjustment</option>
+                                    <option value="Other Adjustment">Other Adjustment / Non-Cash</option>
+                                    <option value="TDS Deducted by Customer">TDS Deducted by Customer (194C)</option>
+                                    <option value="Bad Debt Write-Off">Bad Debt Write-Off</option>
+                                    <option value="Discount/Rebate Given">Discount / Rebate Given</option>
+                                    <option value="Round-Off">Round-Off Adjustment</option>
+                                    <option value="Other Adjustment">Other Adjustment / Non-Cash</option>
                                 </select>
                             </div>
                             <div>
@@ -275,6 +284,38 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- CLEARED / FULLY SETTLED ACCOUNTS SECTION -->
+                <div class="mt-8 pt-4 border-t border-gray-200">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-bold text-gray-800 text-lg">Cleared / Fully Settled Accounts (Zero Balance)</h3>
+                            <span class="text-xs bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded-full" x-text="(dashboard.cleared_accounts || []).length + ' settled'"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <template x-for="party in (dashboard.cleared_accounts || [])" :key="party.party_id">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center border-l-4 border-green-500 hover:shadow-md cursor-pointer transition-all" @click="openLedger(party, party.party_type === 'Customer' ? 'customer' : 'vendor')">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="font-bold text-gray-900 text-base" x-text="party.party_name"></h4>
+                                        <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded" :class="party.party_type === 'Customer' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'" x-text="party.party_type"></span>
+                                    </div>
+                                    <p class="text-xs text-green-700 font-medium mt-1 flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        Account Settled & Cleared
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xs bg-green-50 text-green-700 border border-green-300 font-bold px-2.5 py-1 rounded">₹0.00</span>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!dashboard.cleared_accounts || dashboard.cleared_accounts.length === 0" class="col-span-3 text-center text-xs text-gray-400 py-4 italic bg-white rounded-lg border border-gray-100">
+                            No cleared accounts with prior transactions found yet.
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- NEW LR TAB -->
@@ -306,6 +347,21 @@
                                 <option value="">Select Party...</option>
                                 <template x-for="p in parties" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
                             </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">From (Origin)</label>
+                            <input x-model="lrForm.origin" type="text" placeholder="e.g. Ahmedabad" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">To (Destination)</label>
+                            <input x-model="lrForm.destination" type="text" placeholder="e.g. Surat" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Truck / Lorry No.</label>
+                            <input x-model="lrForm.lorry_no" type="text" placeholder="e.g. GJ-01-AB-1234" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
                         </div>
                     </div>
 
@@ -342,6 +398,11 @@
                         <input x-model="lrForm.description" type="text" placeholder="e.g. Goods, LDPE Coated Film" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
                     </div>
 
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Value of Material / Declared Goods Value (₹) <span class="text-gray-400 font-normal normal-case">— record purpose only</span></label>
+                        <input x-model.number="lrForm.declared_value" type="number" step="0.01" placeholder="e.g. 250000 (Info only)" class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
+                    </div>
+
                     <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center">
                         <span class="font-bold text-gray-600" x-text="lrForm.is_fixed_rate ? 'Total Lumpsum Freight:' : 'Total Freight:'"></span>
                         <span class="text-2xl font-black text-blue-800">₹<span x-text="lrForm.is_fixed_rate ? lrForm.rate.toFixed(2) : (lrForm.charged_weight * lrForm.rate).toFixed(2)"></span></span>
@@ -354,8 +415,8 @@
             <!-- DISPATCH (CHALLAN) TAB - NEWLY ADDED! -->
             <div x-show="activeTab === 'dispatch'">
                 <h2 class="text-2xl font-bold mb-4">Lorry Challan (Dispatch Trips)</h2>
-                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-                    <p class="text-sm text-yellow-700"><strong>Note:</strong> A Bilty only appears in Accounts Receivable (Billing) AFTER it is attached to a Challan here. This proves the goods were dispatched.</p>
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                    <p class="text-sm text-blue-900"><strong>Dispatch & Vendor Settlement:</strong> Attach pending or already-billed LRs to a truck challan here to record lorry hire, advance paid, and vendor TDS settlement.</p>
                 </div>
                 <form @submit.prevent="createChallan" class="bg-white p-5 rounded-xl shadow border border-gray-200 space-y-4">
                     
@@ -424,7 +485,21 @@
                                 <label class="flex-1 flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" :value="lr.id" x-model="challanForm.bilty_ids" class="w-5 h-5 text-blue-600 rounded">
                                     <div>
-                                        <p class="font-bold text-sm">LR No: <span x-text="lr.lr_no"></span> <span class="text-xs text-gray-500">(Wt: <span x-text="lr.charged_weight"></span> MT)</span></p>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-bold text-sm">LR No: <span x-text="lr.lr_no"></span></span>
+                                            <span class="text-xs text-gray-500">(Wt: <span x-text="lr.charged_weight"></span> MT)</span>
+                                            <template x-if="lr.invoice_id">
+                                                <span class="text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-semibold border border-green-200">Already Invoiced</span>
+                                            </template>
+                                        </div>
+                                        <template x-if="lr.origin || lr.destination || (lr.lorry_no && lr.lorry_no !== '-')">
+                                            <p class="text-[11px] text-gray-500 mt-0.5">
+                                                <span x-text="(lr.origin || '') + (lr.destination ? ' → ' + lr.destination : '')"></span>
+                                                <template x-if="lr.lorry_no && lr.lorry_no !== '-'">
+                                                    <span class="ml-1 font-mono font-medium" x-text="'[' + lr.lorry_no + ']'"></span>
+                                                </template>
+                                            </p>
+                                        </template>
                                     </div>
                                 </label>
                                 <button type="button" x-show="role === 'SuperAdmin'" @click="deleteBilty(lr.id)" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1 bg-red-50 border border-red-200 rounded">Delete</button>
@@ -468,6 +543,21 @@
                                         <span class="text-green-700 font-bold">Net Payable: ₹<span x-text="(ch.net_payable || 0).toFixed(2)"></span></span>
                                         <span class="text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded border border-purple-100" x-text="(ch.lr_count || 0) + ' LRs: ' + (ch.lr_nos ? ch.lr_nos.join(', ') : '')"></span>
                                     </div>
+                                    <!-- LIVE TRIP MARGIN SECTION -->
+                                    <div class="mt-2 pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-gray-500">Customer Bill/LR: <b class="text-gray-900">₹<span x-text="(ch.customer_revenue || 0).toFixed(2)"></span></b> <span class="text-[10px] text-gray-400 font-medium" x-text="'(' + (ch.billing_status || 'Unbilled') + ')'"></span></span>
+                                            <span class="text-gray-300">•</span>
+                                            <span class="text-gray-500">Trip Cost: <b class="text-gray-900">₹<span x-text="(ch.total_trip_cost || 0).toFixed(2)"></span></b></span>
+                                        </div>
+                                        <div>
+                                            <span class="font-bold px-2 py-0.5 rounded text-xs inline-flex items-center gap-1 shadow-sm" :class="ch.margin >= 0 ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'">
+                                                <span>Trip Margin:</span>
+                                                <span>₹<span x-text="(ch.margin || 0).toFixed(2)"></span></span>
+                                                <span class="font-black" x-text="'(' + (ch.margin_pct || 0) + '%)'"></span>
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button x-show="role === 'SuperAdmin'" @click="deleteChallan(ch.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded shadow-sm border border-red-200 transition font-bold flex items-center gap-1">
@@ -495,14 +585,30 @@
                     </select>
 
                     <div x-show="unbilledLRs.length > 0" class="mt-4">
-                        <h3 class="font-bold mb-2 border-b pb-2">Select Dispatched Trips to Invoice</h3>
+                        <h3 class="font-bold mb-2 border-b pb-2">Select Trips (LRs) to Invoice</h3>
                         <div class="space-y-2 max-h-60 overflow-y-auto">
                             <template x-for="lr in unbilledLRs" :key="lr.id">
                                 <div class="flex items-center gap-3 p-3 bg-gray-50 rounded border border-gray-200 hover:bg-green-50 transition">
                                     <label class="flex-1 flex items-center gap-3 cursor-pointer">
                                         <input type="checkbox" :value="lr.id" x-model="billingForm.bilty_ids" class="w-5 h-5 text-green-600 rounded">
                                         <div>
-                                            <p class="font-bold">LR: <span x-text="lr.lr_no"></span> <span class="text-xs text-gray-500 ml-2">(₹<span x-text="lr.total_freight_charges"></span>)</span></p>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-bold text-sm">LR: <span x-text="lr.lr_no"></span></span>
+                                                <template x-if="lr.lorry_no && lr.lorry_no !== '-'">
+                                                    <span class="text-xs bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded font-mono font-semibold" x-text="lr.lorry_no"></span>
+                                                </template>
+                                                <template x-if="lr.challan_id">
+                                                    <span class="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-semibold">Dispatched</span>
+                                                </template>
+                                                <template x-if="!lr.challan_id">
+                                                    <span class="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-semibold">Direct LR</span>
+                                                </template>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-0.5">
+                                                <span x-text="(lr.origin || 'Ahmedabad') + ' → ' + (lr.destination || '-')"></span> | 
+                                                Weight: <span x-text="lr.charged_weight"></span> MT | 
+                                                Freight: <b class="text-green-700">₹<span x-text="lr.total_freight_charges"></span></b>
+                                            </p>
                                         </div>
                                     </label>
                                     <button type="button" x-show="role === 'SuperAdmin'" @click="deleteBilty(lr.id)" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1 bg-red-50 border border-red-200 rounded">Delete</button>
@@ -510,6 +616,45 @@
                             </template>
                         </div>
                         
+                        <!-- DYNAMIC OTHER CHARGES SECTION -->
+                        <div class="mt-4 bg-blue-50/50 p-4 rounded-xl border border-blue-200">
+                            <div class="flex justify-between items-center mb-2">
+                                <div>
+                                    <label class="text-xs font-bold text-blue-900 uppercase tracking-wide">Other Charges / Incidental Fees</label>
+                                    <p class="text-[11px] text-gray-500">Add any line items e.g. Loading, Detention, Halting, Toll, Documentation, Stationary</p>
+                                </div>
+                                <button type="button" @click="addOtherCharge" class="text-xs bg-blue-700 hover:bg-blue-800 text-white font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1 transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                    Add Charge
+                                </button>
+                            </div>
+                            
+                            <template x-for="(charge, idx) in billingForm.other_charges" :key="idx">
+                                <div class="flex gap-2 items-center mb-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                                    <input x-model="charge.charge_name" type="text" placeholder="Charge Name (e.g. Loading Charges, Detention)" class="flex-1 px-3 py-1.5 text-sm rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    <div class="flex items-center gap-1 w-40">
+                                        <span class="text-gray-500 text-xs font-bold">₹</span>
+                                        <input x-model.number="charge.amount" type="number" step="0.01" placeholder="Amount" class="w-full px-3 py-1.5 text-sm rounded border border-gray-300 font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    </div>
+                                    <button type="button" @click="removeOtherCharge(idx)" class="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition" title="Remove Charge">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </div>
+                            </template>
+                            
+                            <div class="mt-3 pt-3 border-t border-blue-200 flex flex-wrap justify-between items-center text-xs">
+                                <div class="text-gray-600">
+                                    <span>Selected LRs Freight: <b class="text-gray-900">₹<span x-text="calculateSelectedFreight().toFixed(2)"></span></b></span>
+                                    <span class="mx-1 text-gray-400">+</span>
+                                    <span>Other Charges: <b class="text-blue-800">₹<span x-text="calculateOtherChargesTotal().toFixed(2)"></span></b></span>
+                                </div>
+                                <div class="text-right font-bold text-sm">
+                                    <span class="text-gray-600 uppercase text-[10px]">Total Bill Amount: </span>
+                                    <span class="text-green-700 font-black text-base">₹<span x-text="(calculateSelectedFreight() + calculateOtherChargesTotal()).toFixed(2)"></span></span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mt-4 grid grid-cols-2 gap-4">
                             <div>
                                 <label class="text-[10px] font-bold text-gray-500 uppercase">Invoice No.</label>
@@ -526,7 +671,7 @@
                         </button>
                     </div>
                     <div x-show="billingForm.party_id && unbilledLRs.length === 0" class="text-center p-6 text-gray-500 italic">
-                        No unbilled dispatched trips found. Ensure Bilties are created AND attached to a Dispatch Challan.
+                        No unbilled trips found for this customer. Create a Bilty first!
                     </div>
                 </div>
                 
@@ -586,8 +731,9 @@
                                     <td class="p-3 font-semibold text-gray-800" x-text="p.name"></td>
                                     <td class="p-3 text-gray-500" x-text="(p.gst_no || '') + ' ' + (p.pan_no || '')"></td>
                                     <td class="p-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-[10px] uppercase font-bold" x-text="p.party_type"></span></td>
-                                    <td class="p-3 text-right">
-                                        <button x-show="role === 'SuperAdmin'" @click="deleteParty(p.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded border border-red-200">Delete</button>
+                                    <td class="p-3 text-right space-x-1 whitespace-nowrap">
+                                        <button @click="openEditParty(p)" class="text-blue-600 hover:text-blue-800 font-bold text-xs bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 transition">Edit</button>
+                                        <button x-show="role === 'SuperAdmin'" @click="deleteParty(p.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded border border-red-200 transition">Delete</button>
                                     </td>
                                 </tr>
                             </template>
@@ -595,6 +741,226 @@
                     </table>
                 </div>
             </div>
+
+        
+            <!-- REPORTS TAB -->
+            <div x-show="activeTab === 'reports'" class="space-y-6">
+                <div class="flex justify-between items-end mb-2">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">Reports & Excel Downloads</h2>
+                        <p class="text-xs text-gray-500">Download formatted, accountant-ready spreadsheets (.xlsx) with all registers and detailed bifurcations.</p>
+                    </div>
+                </div>
+
+                <!-- 1. FEATURED MASTER REPORT CARD -->
+                <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-6 rounded-2xl shadow-xl border border-blue-800">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <span class="text-[10px] font-black uppercase tracking-wider bg-yellow-400 text-gray-900 px-2.5 py-0.5 rounded-full">Primary Accounting Report</span>
+                            <h3 class="text-xl font-bold mt-2">Revenue & Expense Detailed Bifurcation</h3>
+                            <p class="text-xs text-blue-200 mt-1 max-w-xl">
+                                Complete rupee-by-rupee overview: Customer-wise freight breakup, charge-wise other income, non-cash adjustments, vendor-wise lorry hire costs, category-wise general expenses, and net profit.
+                            </p>
+                        </div>
+                        <button @click="downloadExcelReport('/api/reports/excel/revenue_expense_detail', 'Revenue_Expense_Bifurcation.xlsx')" class="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-black px-5 py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 whitespace-nowrap">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Download Master P&L (.xlsx)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. STATEMENT OF ACCOUNT / PARTY LEDGERS -->
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Party Statement of Account (Tally-Style Ledgers)
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-4">Export complete statement with voucher types, debit/credit entries, running balance, and closing balance.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Customer Ledger</label>
+                            <div class="flex gap-2 mt-1">
+                                <select x-model="reportPartyId" class="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                                    <option value="">Select Customer...</option>
+                                    <template x-for="p in parties.filter(p => p.party_type === 'Customer')" :key="p.id">
+                                        <option :value="p.id" x-text="p.name"></option>
+                                    </template>
+                                </select>
+                                <button :disabled="!reportPartyId" @click="downloadExcelReport('/api/reports/excel/customer_ledger/' + reportPartyId, 'Customer_Ledger.xlsx')" class="bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1 transition">
+                                    Download
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Vendor (Truck Owner) Ledger</label>
+                            <div class="flex gap-2 mt-1">
+                                <select x-model="reportVendorId" class="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                                    <option value="">Select Vendor...</option>
+                                    <template x-for="p in parties.filter(p => p.party_type === 'Vendor')" :key="p.id">
+                                        <option :value="p.id" x-text="p.name"></option>
+                                    </template>
+                                </select>
+                                <button :disabled="!reportVendorId" @click="downloadExcelReport('/api/reports/excel/vendor_ledger/' + reportVendorId, 'Vendor_Ledger.xlsx')" class="bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1 transition">
+                                    Download
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. TRANSPORT & OPERATIONAL REGISTERS -->
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Operational Registers (LRs, Challans, Invoices)
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-4">Complete logs formatted with headers, double border totals, and auto-filters.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                        <div class="p-3 bg-emerald-50/60 rounded-lg border border-emerald-200 flex flex-col justify-between">
+                            <div>
+                                <span class="text-[9px] bg-emerald-700 text-white font-bold px-1.5 py-0.5 rounded uppercase">Trip Profitability</span>
+                                <h4 class="font-bold text-sm text-emerald-950 mt-1">Challan Margin</h4>
+                                <p class="text-[11px] text-emerald-800 mt-0.5">Customer revenue vs vendor cost & net margin %.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/challan_margin', 'Challan_Profitability_Margin_Report.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">LR Register</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">All bilties, declared values, weights, rates, dispatch & billing status.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/lr_register', 'LR_Register.xlsx')" class="mt-3 w-full bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Challan Register</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Trips, vendor PAN, routes, drivers, advance, TDS, and balances.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/challan_register', 'Challan_Register.xlsx')" class="mt-3 w-full bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Invoice Register</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Bills, freight, other charges, IGST, payments received, balances.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/invoice_register', 'Invoice_Register.xlsx')" class="mt-3 w-full bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Party Outstanding</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Complete exposure list: Unbilled LRs, unpaid invoices, and cleared parties.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/outstanding_summary', 'Outstanding_Summary.xlsx')" class="mt-3 w-full bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. ACCOUNTING & ADJUSTMENT REGISTERS -->
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Financial, Adjustments & Compliance Registers
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-4">Receipts, payouts, write-offs, TDS deductions, and company expenses.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Customer Receipts</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Payments received from clients.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/payment_register', 'Customer_Receipts.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Vendor Payouts</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Payments made to lorry vendors.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/vendor_payment_register', 'Vendor_Payouts.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Non-Cash Adjustments</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Bad debts, TDS, discounts, round-offs.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/journal_register', 'NonCash_Adjustments.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">Expense Register</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Office, trip, maintenance, salary.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/expense_register', 'Expense_Register.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+
+                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-sm text-gray-800">TDS 194C Summary</h4>
+                                <p class="text-[11px] text-gray-500 mt-0.5">Vendor-wise TDS deduction summary.</p>
+                            </div>
+                            <button @click="downloadExcelReport('/api/reports/excel/tds_summary', 'TDS_Summary.xlsx')" class="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 rounded transition">Download .xlsx</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        
+        <!-- EDIT PARTY MODAL -->
+        <div x-show="editPartyModalOpen" style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 no-print">
+            <div @click.away="editPartyModalOpen = false" class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
+                <div class="bg-blue-900 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold text-lg flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        Edit Party Details
+                    </h3>
+                    <button @click="editPartyModalOpen = false" class="text-white hover:text-red-300 font-bold text-2xl leading-none">&times;</button>
+                </div>
+                <form @submit.prevent="updateParty" class="p-6 space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Party / Company Name</label>
+                        <input x-model="editPartyForm.name" type="text" required class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">GST Number</label>
+                            <input x-model="editPartyForm.gst_no" type="text" placeholder="GSTIN" class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">PAN Number</label>
+                            <input x-model="editPartyForm.pan_no" type="text" placeholder="PAN No" class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Phone / Mobile</label>
+                            <input x-model="editPartyForm.phone" type="text" placeholder="Phone" class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Party Type</label>
+                            <select x-model="editPartyForm.party_type" class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500">
+                                <option value="Customer">Customer</option>
+                                <option value="Vendor">Vendor (Truck Owner)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Address</label>
+                        <textarea x-model="editPartyForm.address" rows="3" placeholder="Address..." class="w-full px-3 py-2 rounded-lg border border-gray-300 mt-1 focus:ring-1 focus:ring-blue-500"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-3 border-t">
+                        <button type="button" @click="editPartyModalOpen = false" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition">Cancel</button>
+                        <button type="submit" class="px-5 py-2 text-sm text-white bg-blue-700 hover:bg-blue-800 rounded-lg font-bold shadow transition">Update Party</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         </main>
 
@@ -724,7 +1090,8 @@
                 { id: 'dispatch', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', label: 'Dispatch' },
                 { id: 'billing', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: 'Bill' },
                 { id: 'accounts', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Account' },
-                { id: 'parties', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', label: 'Party' }
+                { id: 'parties', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', label: 'Party' },
+                { id: 'reports', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: 'Reports' }
             ]">
                 <button @click="switchTab(item.id)" class="flex flex-col items-center p-2 rounded-lg transition-colors" :class="activeTab === item.id ? 'text-blue-800 bg-blue-50' : 'text-gray-500 hover:bg-gray-50'">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"></path></svg>
@@ -759,11 +1126,16 @@
                 ledgerExpenses: [],
                 
                 partyForm: { name: '', gst_no: '', pan_no: '', party_type: 'Customer', address: '' },
-                lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', lorry_no: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false },
+                lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], origin: 'Ahmedabad', destination: '', lorry_no: '', consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false, declared_value: null },
                 challanForm: { challan_no: '', date: new Date().toISOString().split('T')[0], origin: '', destination: '', lorry_no: '', vendor_id: '', driver_name: 'Driver', license_no: 'N/A', driver_phone: '0000', chassis_engine_no: 'N/A', vendor_freight: 0, advance_paid: 0, payable_at: 'Ahmedabad', apply_tds: true, bilty_ids: [] },
-                billingForm: { party_id: '', bill_no: '', date: new Date().toISOString().split('T')[0], bilty_ids: [], bank_name: 'HDFC', account_no: '123', ifsc_code: 'HDFC', branch: 'Main' },
+                billingForm: { party_id: '', bill_no: '', date: new Date().toISOString().split('T')[0], bilty_ids: [], bank_name: 'HDFC', account_no: '123', ifsc_code: 'HDFC', branch: 'Main', other_charges: [] },
+                reportPartyId: '',
+                reportVendorId: '',
                 paymentForm: { date: new Date().toISOString().split('T')[0], party_id: '', invoice_id: '', amount_received: 0, payment_mode: 'NEFT', utr_no: '' },
-                vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '' },
+                vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '', setoff_remaining: false },
+                selectedChallanObj: null,
+                editPartyModalOpen: false,
+                editPartyForm: { id: null, name: '', gst_no: '', pan_no: '', phone: '', address: '', party_type: 'Customer' },
                 expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '' },
                 isGenerating: false,
                 pastInvoices: [],
@@ -824,10 +1196,17 @@
                 
                 selectUnpaidChallan() {
                     if(!this.vendorPaymentForm.challan_id) {
-                        this.vendorPaymentForm.amount_paid = 0; return;
+                        this.vendorPaymentForm.amount_paid = 0;
+                        this.selectedChallanObj = null;
+                        this.vendorPaymentForm.setoff_remaining = false;
+                        return;
                     }
                     const ch = this.unpaidChallans.find(c => c.id == this.vendorPaymentForm.challan_id);
-                    if(ch) this.vendorPaymentForm.amount_paid = ch.balance;
+                    if(ch) {
+                        this.selectedChallanObj = ch;
+                        this.vendorPaymentForm.amount_paid = ch.balance;
+                        this.vendorPaymentForm.setoff_remaining = false;
+                    }
                 },
 
                 async recordVendorPayment() {
@@ -835,15 +1214,71 @@
                         this.showToast('Select a vendor and enter a valid amount', 'error'); return;
                     }
                     const payload = { ...this.vendorPaymentForm, challan_id: this.vendorPaymentForm.challan_id || null };
+                    delete payload.setoff_remaining;
+                    
                     try {
                         await this.apiCall('/api/vendor_payments', { method: 'POST', body: JSON.stringify(payload) });
-                        this.showToast('Vendor Payment Recorded!');
+                        
+                        // If user checked setoff remaining balance
+                        if(this.vendorPaymentForm.setoff_remaining && this.selectedChallanObj) {
+                            const remaining = this.selectedChallanObj.balance - this.vendorPaymentForm.amount_paid;
+                            if(remaining > 0.01) {
+                                await this.apiCall('/api/vendor_payments', {
+                                    method: 'POST',
+                                    body: JSON.stringify({
+                                        date: this.vendorPaymentForm.date,
+                                        vendor_id: this.vendorPaymentForm.vendor_id,
+                                        challan_id: this.vendorPaymentForm.challan_id,
+                                        amount_paid: remaining,
+                                        payment_mode: 'Setoff / Discount (Settled in Full)',
+                                        utr_no: 'Full & Final Setoff'
+                                    })
+                                });
+                                this.showToast(`Challan settled in full! ₹${remaining.toFixed(2)} booked as setoff revenue.`);
+                            }
+                        } else {
+                            this.showToast('Vendor Payment Recorded!');
+                        }
+                        
                         this.vendorPaymentForm.amount_paid = 0;
                         this.vendorPaymentForm.utr_no = '';
                         this.vendorPaymentForm.challan_id = '';
+                        this.vendorPaymentForm.setoff_remaining = false;
+                        this.selectedChallanObj = null;
                         this.fetchUnpaidChallans(); 
                         this.loadDashboard();
+                        this.loadChallans();
                     } catch(e) { this.showToast('Error recording payment', 'error'); }
+                },
+
+                openEditParty(party) {
+                    this.editPartyForm = {
+                        id: party.id,
+                        name: party.name,
+                        gst_no: party.gst_no || '',
+                        pan_no: party.pan_no || '',
+                        phone: party.phone || '',
+                        address: party.address || '',
+                        party_type: party.party_type || 'Customer'
+                    };
+                    this.editPartyModalOpen = true;
+                },
+
+                async updateParty() {
+                    if(!this.editPartyForm.id || !this.editPartyForm.name) {
+                        this.showToast('Party name is required', 'error'); return;
+                    }
+                    try {
+                        await this.apiCall(`/api/parties/${this.editPartyForm.id}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(this.editPartyForm)
+                        });
+                        this.showToast('Party details updated successfully!');
+                        this.editPartyModalOpen = false;
+                        this.loadParties();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error updating party', 'error');
+                    }
                 },
 
                 async recordExpense() {
@@ -858,6 +1293,96 @@
                         this.expenseForm.description = '';
                         this.loadDashboard();
                     } catch(e) { this.showToast('Error recording expense', 'error'); }
+                },
+
+                
+                addOtherCharge() {
+                    this.billingForm.other_charges.push({ charge_name: '', amount: 0 });
+                },
+                removeOtherCharge(idx) {
+                    this.billingForm.other_charges.splice(idx, 1);
+                },
+                calculateSelectedFreight() {
+                    if (!this.billingForm.bilty_ids || this.billingForm.bilty_ids.length === 0) return 0;
+                    return this.unbilledLRs
+                        .filter(lr => this.billingForm.bilty_ids.includes(lr.id.toString()) || this.billingForm.bilty_ids.includes(lr.id))
+                        .reduce((sum, lr) => sum + (lr.total_freight_charges || 0), 0);
+                },
+                calculateOtherChargesTotal() {
+                    if (!this.billingForm.other_charges) return 0;
+                    return this.billingForm.other_charges.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+                },
+
+                async deletePayment(id) {
+                    if(!confirm('Are you sure you want to delete/undo this payment record? This will restore the outstanding balance.')) return;
+                    try {
+                        await this.apiCall(`/api/payments/${id}`, { method: 'DELETE' });
+                        this.showToast('Payment deleted successfully');
+                        if(this.ledgerParty) {
+                            this.openLedger(this.ledgerParty, this.ledgerType);
+                        }
+                        this.loadDashboard();
+                        this.fetchUnpaidInvoices();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error deleting payment', 'error');
+                    }
+                },
+
+                async deleteVendorPayment(id) {
+                    if(!confirm('Are you sure you want to delete/undo this vendor payout? This will restore the vendor payable balance.')) return;
+                    try {
+                        await this.apiCall(`/api/vendor_payments/${id}`, { method: 'DELETE' });
+                        this.showToast('Vendor payout deleted successfully');
+                        if(this.ledgerParty) {
+                            this.openLedger(this.ledgerParty, this.ledgerType);
+                        }
+                        this.loadDashboard();
+                        this.fetchUnpaidChallans();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error deleting vendor payout', 'error');
+                    }
+                },
+
+                async deleteExpense(id) {
+                    if(!confirm('Are you sure you want to delete this expense record?')) return;
+                    try {
+                        await this.apiCall(`/api/expenses/${id}`, { method: 'DELETE' });
+                        this.showToast('Expense deleted successfully');
+                        if(this.ledgerType === 'expense') {
+                            this.openLedger(null, 'expense');
+                        }
+                        this.loadDashboard();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error deleting expense', 'error');
+                    }
+                },
+
+                async downloadExcelReport(url, defaultFileName) {
+                    try {
+                        this.showToast('Generating formatted Excel report...', 'info');
+                        const res = await fetch(url, {
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+                        if (!res.ok) throw new Error('Failed to generate Excel report');
+                        const blob = await res.blob();
+                        const downloadUrl = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = downloadUrl;
+                        const cd = res.headers.get('Content-Disposition');
+                        let fileName = defaultFileName;
+                        if (cd) {
+                            const match = cd.match(/filename="?([^";]+)"?/);
+                            if (match && match[1]) fileName = match[1];
+                        }
+                        a.download = fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(downloadUrl);
+                        this.showToast('Excel report downloaded successfully!');
+                    } catch(e) {
+                        this.showToast(e.message || 'Error downloading report', 'error');
+                    }
                 },
 
                 initApp() { if (this.token) this.loadInitialData(); },
@@ -1084,8 +1609,15 @@
                     try {
                         await this.apiCall('/api/bilties', { method: 'POST', body: JSON.stringify(this.lrForm) });
                         this.showToast('Bilty Saved!');
-                        this.lrForm.lr_no = ''; this.lrForm.charged_weight = 0; this.lrForm.rate = 0;
+                        this.lrForm.lr_no = ''; 
+                        this.lrForm.destination = '';
+                        this.lrForm.lorry_no = '';
+                        this.lrForm.charged_weight = 0; 
+                        this.lrForm.rate = 0;
+                        this.lrForm.declared_value = null;
                         this.fetchAvailableBilties(); // Update available for dispatch
+                        this.fetchUnbilled(); // Update unbilled for customer billing
+                        this.loadDashboard();
                     } catch(e) { this.showToast('Error saving Bilty', 'error'); }
                 },
 
@@ -1177,6 +1709,17 @@
                             </tr>`;
                         });
                         
+                        if (charges && charges.length > 0) {
+                            charges.forEach(ch => {
+                                rows += `<tr style="border-bottom: 1px solid black; font-style: italic;">
+                                    <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                    <td colspan="5" style="border-right: 1px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name}</td>
+                                    <td colspan="5" style="border-right: 1px solid black; padding: 5px; text-align: right;">Incidental / Other Charge</td>
+                                    <td style="padding: 5px; text-align: right; font-weight: bold;">${(Number(ch.amount) || 0).toFixed(2)}</td>
+                                </tr>`;
+                            });
+                        }
+
                         while(i <= 2) {
                             rows += `<tr style="border-bottom: 1px solid black; height: 25px;">
                                 <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
@@ -1198,7 +1741,23 @@
                         
                         setTimeout(() => window.print(), 500);
                         
+                        // Append other charges to print template
+                        if (this.billingForm.other_charges && this.billingForm.other_charges.length > 0) {
+                            this.billingForm.other_charges.forEach(ch => {
+                                if(ch.charge_name && ch.amount > 0) {
+                                    rows += `<tr style="border-bottom: 1px solid black; font-style: italic;">
+                                        <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                        <td colspan="5" style="border-right: 1px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name}</td>
+                                        <td colspan="5" style="border-right: 1px solid black; padding: 5px; text-align: right;">Incidental / Other Charge</td>
+                                        <td style="padding: 5px; text-align: right; font-weight: bold;">${(Number(ch.amount) || 0).toFixed(2)}</td>
+                                    </tr>`;
+                                }
+                            });
+                        }
+                        document.getElementById('print_inv_body').innerHTML = rows;
+
                         this.billingForm.bill_no = '';
+                        this.billingForm.other_charges = [];
                         this.fetchUnbilled();
                         this.loadDashboard();
                         this.loadInvoices();
@@ -1219,6 +1778,7 @@
                 async reprintInvoice(inv) {
                     try {
                         const bilties = await this.apiCall(`/api/invoices/${inv.id}/bilties`);
+                        const charges = await this.apiCall(`/api/invoices/${inv.id}/charges`).catch(() => []);
                         const party = this.parties.find(p => p.id == inv.party_id);
                         
                         document.getElementById('print_cust_name').innerText = party.name;
@@ -1300,6 +1860,7 @@
                                         <th class="p-3 text-right">Debit (₹)</th>
                                         <th class="p-3 text-right">Credit (₹)</th>
                                         <th class="p-3 text-right">Balance</th>
+                                        <th class="p-3 text-center" x-show="role === 'SuperAdmin'">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1312,6 +1873,10 @@
                                             <td class="p-3 text-right" x-text="row.debit > 0 ? row.debit.toFixed(2) : ''"></td>
                                             <td class="p-3 text-right" x-text="row.credit > 0 ? row.credit.toFixed(2) : ''"></td>
                                             <td class="p-3 text-right font-bold" x-text="row.balance_str"></td>
+                                            <td class="p-3 text-center" x-show="role === 'SuperAdmin'">
+                                                <button x-show="row.entry_type === 'payment'" @click="deletePayment(row.id)" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-1 rounded font-bold border border-red-200 transition">Undo</button>
+                                                <button x-show="row.entry_type === 'vendor_payment'" @click="deleteVendorPayment(row.id)" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-1 rounded font-bold border border-red-200 transition">Undo</button>
+                                            </td>
                                         </tr>
                                     </template>
                                     <tr x-show="ledgerRows.length === 0"><td colspan="7" class="p-6 text-center text-gray-500 italic">No transactions found for this party.</td></tr>
@@ -1322,6 +1887,7 @@
                                         <td class="p-4 text-right" x-text="ledgerRows.reduce((sum, r) => sum + r.debit, 0).toFixed(2)"></td>
                                         <td class="p-4 text-right" x-text="ledgerRows.reduce((sum, r) => sum + r.credit, 0).toFixed(2)"></td>
                                         <td class="p-4 text-right text-lg text-yellow-300" x-text="ledgerRows[ledgerRows.length-1].balance_str"></td>
+                                        <td x-show="role === 'SuperAdmin'"></td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -1335,7 +1901,7 @@
                                 <h3 class="font-bold text-purple-700 bg-purple-50 p-3 border-b">General Expense Ledger</h3>
                                 <table class="w-full text-left text-sm">
                                     <thead class="bg-gray-100 text-gray-600">
-                                        <tr><th class="p-2">Date</th><th class="p-2">Type</th><th class="p-2">Description</th><th class="p-2 text-right">Amount</th></tr>
+                                        <tr><th class="p-2">Date</th><th class="p-2">Type</th><th class="p-2">Description</th><th class="p-2 text-right">Amount</th><th class="p-2 text-center" x-show="role === 'SuperAdmin'">Action</th></tr>
                                     </thead>
                                     <tbody>
                                         <template x-for="exp in ledgerExpenses" :key="exp.id">
@@ -1344,6 +1910,9 @@
                                                 <td class="p-2 font-bold" x-text="exp.expense_type"></td>
                                                 <td class="p-2" x-text="exp.description"></td>
                                                 <td class="p-2 text-right font-bold text-purple-600" x-text="'₹' + exp.amount.toFixed(2)"></td>
+                                                <td class="p-2 text-center" x-show="role === 'SuperAdmin'">
+                                                    <button @click="deleteExpense(exp.id)" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                                </td>
                                             </tr>
                                         </template>
                                         <tr x-show="ledgerExpenses.length === 0"><td colspan="4" class="p-4 text-center text-gray-500 italic">No expenses recorded.</td></tr>
@@ -1352,6 +1921,7 @@
                                         <tr>
                                             <td colspan="3" class="p-2 text-right">Total Booked Expenses:</td>
                                             <td class="p-2 text-right text-purple-700" x-text="'₹' + ledgerExpenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)"></td>
+                                            <td x-show="role === 'SuperAdmin'"></td>
                                         </tr>
                                     </tfoot>
                                 </table>

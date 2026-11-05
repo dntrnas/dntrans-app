@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'gta-app-v4';
+const CACHE_NAME = 'gta-app-v6';
 const urlsToCache = [
   '/',
   '/static/index.html',

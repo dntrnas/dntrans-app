@@ -59,6 +59,8 @@ class Bilty(Base):
     demurrage_days = Column(Integer, nullable=True)
     demurrage_rate = Column(Float, nullable=True)
     
+    declared_value = Column(Float, nullable=True, default=None)
+    
     challan_id = Column(Integer, ForeignKey('challans.id'), nullable=True)
     invoice_id = Column(Integer, ForeignKey('invoices.id'), nullable=True)
     
@@ -122,6 +124,15 @@ class Invoice(Base):
     
     party = relationship("Party")
     bilties = relationship("Bilty", backref="invoice")
+
+class InvoiceCharge(Base):
+    __tablename__ = 'invoice_charges'
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'), nullable=False)
+    charge_name = Column(String, nullable=False)
+    amount = Column(Float, default=0.0)
+    
+    invoice = relationship("Invoice", backref="other_charges")
 
 class Payment(Base):
     __tablename__ = 'payments'
