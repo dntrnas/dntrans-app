@@ -80,7 +80,7 @@
                     <button @click="loadDashboard" class="text-blue-600 text-sm flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Refresh</button>
                 </div>
                 
-                <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="grid grid-cols-3 gap-4 mb-4">
                     <div class="bg-blue-50 p-4 rounded-xl shadow border border-blue-100 text-center">
                         <p class="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Total Revenue</p>
                         <p class="text-xl font-black text-blue-900">₹<span x-text="(dashboard.total_revenue || 0).toLocaleString('en-IN')"></span></p>
@@ -92,6 +92,51 @@
                     <div class="bg-green-50 p-4 rounded-xl shadow border border-green-100 text-center">
                         <p class="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Net Revenue</p>
                         <p class="text-xl font-black text-green-900">₹<span x-text="(dashboard.net_revenue || 0).toLocaleString('en-IN')"></span></p>
+                    </div>
+                </div>
+
+                <!-- LIVE CASH & BANK CARDS WITH CLICK-TO-VIEW LEDGER -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <!-- Cash in Hand Card -->
+                    <div class="bg-gradient-to-br from-emerald-50 to-green-100 p-4 rounded-xl shadow-sm border border-emerald-200 flex items-center justify-between cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5" @click="openCashBankModal('Cash')">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-2xl shadow">
+                                💵
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <p class="text-xs text-emerald-800 font-bold uppercase tracking-wider">Cash in Hand</p>
+                                    <span class="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Live Drawer</span>
+                                </div>
+                                <h3 class="text-2xl font-black text-emerald-950 mt-0.5">₹<span x-text="(cashBankSummary.cash_balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span></h3>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold text-emerald-800 bg-emerald-200/80 hover:bg-emerald-300 px-3 py-1.5 rounded-lg border border-emerald-300 transition flex items-center gap-1 shadow-sm">
+                                View Cash Book ➔
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Bank Balance Card -->
+                    <div class="bg-gradient-to-br from-indigo-50 to-blue-100 p-4 rounded-xl shadow-sm border border-indigo-200 flex items-center justify-between cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5" @click="openCashBankModal('Bank')">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow">
+                                🏦
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <p class="text-xs text-indigo-800 font-bold uppercase tracking-wider">Bank Balance</p>
+                                    <span class="text-[10px] bg-indigo-200 text-indigo-800 font-bold px-1.5 py-0.5 rounded">Live Bank A/c</span>
+                                </div>
+                                <h3 class="text-2xl font-black text-indigo-950 mt-0.5">₹<span x-text="(cashBankSummary.bank_balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span></h3>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold text-indigo-800 bg-indigo-200/80 hover:bg-indigo-300 px-3 py-1.5 rounded-lg border border-indigo-300 transition flex items-center gap-1 shadow-sm">
+                                View Bank Book ➔
+                            </span>
+                        </div>
                     </div>
                 </div>
                 
@@ -219,6 +264,32 @@
                                 <input x-model.number="vendorPaymentForm.amount_paid" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-red-700" required>
                             </div>
                         </div>
+
+                        <!-- Full & Final Settlement Popup Banner (Pops up when paying less than Challan Balance) -->
+                        <div x-show="vendorPaymentForm.challan_id && vendorPaymentForm.amount_paid > 0 && getSelectedChallanBalance() > vendorPaymentForm.amount_paid" 
+                             x-transition
+                             class="p-3 bg-blue-50 border-2 border-blue-400 rounded-lg flex items-center justify-between gap-3 shadow-sm">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" id="vendor_setoff_check" x-model="vendorPaymentForm.setoff_remaining" class="w-5 h-5 text-blue-600 rounded cursor-pointer focus:ring-blue-500">
+                                <label for="vendor_setoff_check" class="text-xs font-bold text-blue-900 cursor-pointer select-none">
+                                    <span class="text-sm font-black text-blue-800">⚡ Settle in Full & Final?</span>
+                                    <span class="block text-[11px] font-medium text-blue-700 mt-0.5">
+                                        Remaining <span class="font-bold">₹<span x-text="(getSelectedChallanBalance() - vendorPaymentForm.amount_paid).toFixed(2)"></span></span> will be booked as <span class="underline font-bold text-green-700">Discount / Profit Gain</span> and clear the challan completely.
+                                    </span>
+                                </label>
+                            </div>
+                            <span class="text-xs font-black bg-green-100 text-green-800 border border-green-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap">
+                                Profit: +₹<span x-text="(getSelectedChallanBalance() - vendorPaymentForm.amount_paid).toFixed(2)"></span>
+                            </span>
+                        </div>
+
+                        <!-- Extra Payment / Halting Banner -->
+                        <div x-show="vendorPaymentForm.challan_id && vendorPaymentForm.amount_paid > getSelectedChallanBalance()" 
+                             x-transition
+                             class="p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-xs text-amber-900 font-bold">
+                            <span>⚠️ Extra Halting / Charge: Paying ₹<span x-text="(vendorPaymentForm.amount_paid - getSelectedChallanBalance()).toFixed(2)"></span> above challan balance.</span>
+                            <span class="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-bold">Extra Trip Cost</span>
+                        </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label class="text-[10px] font-bold text-gray-500 uppercase">Date</label>
@@ -264,11 +335,74 @@
                             <label class="text-[10px] font-bold text-gray-500 uppercase">Description / Note</label>
                             <input x-model="expenseForm.description" type="text" placeholder="e.g. Diesel slip, Office tea, Toll tax" class="w-full px-4 py-2 rounded border border-gray-300" required>
                         </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-gray-500 uppercase">Amount (₹)</label>
-                            <input x-model.number="expenseForm.amount" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-orange-700" required>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Amount (₹)</label>
+                                <input x-model.number="expenseForm.amount" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-orange-700" required>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Paid Through / Mode</label>
+                                <select x-model="expenseForm.payment_mode" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-gray-800">
+                                    <option value="Cash">Cash (From Office Drawer)</option>
+                                    <option value="Bank">Bank / Online (NEFT / UPI / Cheque)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Reference / Cheque No. (Optional)</label>
+                                <input x-model="expenseForm.reference_no" type="text" placeholder="e.g. UTR / Cheque / Txn ID" class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
                         </div>
-                        <button type="submit" class="w-full bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-700 transition">Record Expense</button>
+                        <button type="submit" class="w-full bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-700 transition">Record Expense & Update Cash/Bank</button>
+                    </form>
+                </div>
+
+                <!-- RECORD DEPOSIT, CASH INFLOW & CONTRA TRANSFER SECTION -->
+                <div class="bg-white p-5 rounded-xl shadow border border-gray-200 border-l-4 border-indigo-500">
+                    <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+                        <h3 class="font-bold text-indigo-800 text-lg flex items-center gap-2">
+                            <span>Record Deposit, Cash Inflow & Contra Transfer</span>
+                        </h3>
+                        <span class="text-xs bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">Cash & Bank Maintenance</span>
+                    </div>
+                    <form @submit.prevent="recordCashBankEntry" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Transaction Type</label>
+                                <select x-model="cashBankForm.entry_type" @change="onCashBankTypeChange" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-gray-800" required>
+                                    <option value="Deposit to Cash">Cash Inflow / Someone Brought Cash</option>
+                                    <option value="Deposit to Bank">Deposit into Bank (Owner / Capital / Direct)</option>
+                                    <option value="Other Income (Cash)">Other Income (Received in Cash)</option>
+                                    <option value="Other Income (Bank)">Other Income (Received in Bank)</option>
+                                    <option value="Contra: Cash to Bank">Contra: Cash Deposited to Bank</option>
+                                    <option value="Contra: Bank to Cash">Contra: Cash Withdrawn from Bank</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Who Brought / Deposited? (Person / Source)</label>
+                                <input x-model="cashBankForm.depositor_name" type="text" placeholder="e.g. Deepak (Owner), Self, Client name" class="w-full px-4 py-2 rounded border border-gray-300 font-semibold text-gray-800" required>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Amount (₹)</label>
+                                <input x-model.number="cashBankForm.amount" type="number" step="0.01" class="w-full px-4 py-2 rounded border border-gray-300 font-bold text-indigo-700" required>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Date</label>
+                                <input x-model="cashBankForm.date" type="date" class="w-full px-4 py-2 rounded border border-gray-300" required>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Purpose / Category</label>
+                                <input x-model="cashBankForm.description" type="text" placeholder="e.g. Working Capital, Scrap Sale, Driver Advance withdrawal" class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Reference / Cheque / UTR No.</label>
+                                <input x-model="cashBankForm.reference_no" type="text" placeholder="e.g. Cheque #452101, UTR12345" class="w-full px-4 py-2 rounded border border-gray-300">
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition">
+                            Save Inflow / Deposit Entry & Update Ledger
+                        </button>
                     </form>
                 </div>
 
@@ -999,6 +1133,127 @@
             </div>
 
         
+        <!-- CASH & BANK LEDGER MODAL -->
+        <div x-show="cashBankModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" x-cloak>
+            <div class="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+                <!-- Header with Tabs and Close Button -->
+                <div class="p-5 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3 bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="inline-flex rounded-xl p-1 bg-gray-200 border border-gray-300">
+                            <button type="button" @click="activeCashBankTab = 'Cash'; fetchCashBankLedger()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5" :class="activeCashBankTab === 'Cash' ? 'bg-emerald-600 text-white shadow' : 'text-gray-700 hover:text-black'">
+                                💵 Cash Book (Cash Ledger)
+                            </button>
+                            <button type="button" @click="activeCashBankTab = 'Bank'; fetchCashBankLedger()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5" :class="activeCashBankTab === 'Bank' ? 'bg-indigo-600 text-white shadow' : 'text-gray-700 hover:text-black'">
+                                🏦 Bank Book (Bank Ledger)
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <button @click="downloadCashBankExcel" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Export Excel
+                        </button>
+                        <button @click="cashBankModalOpen = false" class="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Date Filter Bar -->
+                <div class="p-4 bg-white border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-1.5 text-xs">
+                            <span class="font-bold text-gray-500">From:</span>
+                            <input type="date" x-model="cashBankFilterFrom" @change="fetchCashBankLedger" class="px-2.5 py-1 rounded border border-gray-300 text-xs font-semibold">
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs">
+                            <span class="font-bold text-gray-500">To:</span>
+                            <input type="date" x-model="cashBankFilterTo" @change="fetchCashBankLedger" class="px-2.5 py-1 rounded border border-gray-300 text-xs font-semibold">
+                        </div>
+                        <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs">
+                            <button type="button" @click="setCashBankFilter('today')" class="px-2 py-1 rounded font-medium text-gray-600 hover:text-black">Today</button>
+                            <button type="button" @click="setCashBankFilter('this_month')" class="px-2 py-1 rounded font-medium text-gray-600 hover:text-black">This Month</button>
+                            <button type="button" @click="setCashBankFilter('all')" class="px-2 py-1 rounded font-medium text-gray-600 hover:text-black">All Time</button>
+                        </div>
+                    </div>
+                    
+                    <button @click="fetchCashBankLedger" class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Key Metrics Strip -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50/70 border-b border-gray-200 text-xs">
+                    <div class="p-2.5 bg-white rounded-lg border border-gray-200">
+                        <p class="text-gray-400 uppercase tracking-wider text-[10px] font-bold">Opening Balance</p>
+                        <p class="font-black text-sm text-gray-800 mt-0.5">₹<span x-text="(cashBankLedgerData.opening_balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})"></span></p>
+                    </div>
+                    <div class="p-2.5 bg-white rounded-lg border border-green-200">
+                        <p class="text-green-600 uppercase tracking-wider text-[10px] font-bold">Total Inflows (+)</p>
+                        <p class="font-black text-sm text-green-700 mt-0.5">₹<span x-text="(cashBankLedgerData.total_inflow || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})"></span></p>
+                    </div>
+                    <div class="p-2.5 bg-white rounded-lg border border-red-200">
+                        <p class="text-red-600 uppercase tracking-wider text-[10px] font-bold">Total Outflows (-)</p>
+                        <p class="font-black text-sm text-red-700 mt-0.5">₹<span x-text="(cashBankLedgerData.total_outflow || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})"></span></p>
+                    </div>
+                    <div class="p-2.5 bg-white rounded-lg border" :class="activeCashBankTab === 'Cash' ? 'border-emerald-300 bg-emerald-50/30' : 'border-indigo-300 bg-indigo-50/30'">
+                        <p class="uppercase tracking-wider text-[10px] font-bold" :class="activeCashBankTab === 'Cash' ? 'text-emerald-700' : 'text-indigo-700'">Closing Balance</p>
+                        <p class="font-black text-base mt-0.5" :class="activeCashBankTab === 'Cash' ? 'text-emerald-900' : 'text-indigo-900'">₹<span x-text="(cashBankLedgerData.closing_balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})"></span></p>
+                    </div>
+                </div>
+
+                <!-- Ledger Table -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <table class="w-full text-xs text-left">
+                        <thead class="bg-gray-100 text-gray-600 uppercase text-[10px] sticky top-0 border-b border-gray-200 shadow-sm">
+                            <tr>
+                                <th class="p-2">Date</th>
+                                <th class="p-2">Vch Type</th>
+                                <th class="p-2">Particulars</th>
+                                <th class="p-2">Ref / Chq / UTR</th>
+                                <th class="p-2 text-right text-green-700">Inflow / Dr (₹)</th>
+                                <th class="p-2 text-right text-red-700">Outflow / Cr (₹)</th>
+                                <th class="p-2 text-right">Running Balance (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 font-medium">
+                            <template x-if="cashBankFilterFrom">
+                                <tr class="bg-blue-50/40 text-blue-900 font-bold italic">
+                                    <td class="p-2" x-text="cashBankFilterFrom"></td>
+                                    <td class="p-2"><span class="px-1.5 py-0.5 rounded bg-blue-100 text-[10px]">Opening</span></td>
+                                    <td class="p-2" colspan="2">Opening Balance brought forward</td>
+                                    <td class="p-2 text-right text-green-800" x-text="cashBankLedgerData.opening_balance >= 0 ? '₹' + cashBankLedgerData.opening_balance.toFixed(2) : '-'"></td>
+                                    <td class="p-2 text-right text-red-800" x-text="cashBankLedgerData.opening_balance < 0 ? '₹' + Math.abs(cashBankLedgerData.opening_balance).toFixed(2) : '-'"></td>
+                                    <td class="p-2 text-right font-black" x-text="'₹' + cashBankLedgerData.opening_balance.toFixed(2)"></td>
+                                </tr>
+                            </template>
+                            <template x-for="r in (cashBankLedgerData.rows || [])" :key="r.id">
+                                <tr class="hover:bg-gray-50 transition">
+                                    <td class="p-2 text-gray-500 whitespace-nowrap" x-text="r.date_str"></td>
+                                    <td class="p-2">
+                                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" 
+                                              :class="r.inflow > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                              x-text="r.vch_type"></span>
+                                    </td>
+                                    <td class="p-2 text-gray-800" x-text="r.particulars"></td>
+                                    <td class="p-2 text-gray-500" x-text="r.ref_no || '-'"></td>
+                                    <td class="p-2 text-right font-bold text-green-700" x-text="r.inflow > 0 ? '₹' + r.inflow.toFixed(2) : '-'"></td>
+                                    <td class="p-2 text-right font-bold text-red-700" x-text="r.outflow > 0 ? '₹' + r.outflow.toFixed(2) : '-'"></td>
+                                    <td class="p-2 text-right font-black text-gray-900" x-text="r.balance_str"></td>
+                                </tr>
+                            </template>
+                            <template x-if="!cashBankLedgerData.rows || cashBankLedgerData.rows.length === 0">
+                                <tr>
+                                    <td colspan="7" class="p-8 text-center text-gray-400 italic">No cash/bank entries found for the selected period.</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- EDIT PARTY MODAL -->
         <div x-show="editPartyModalOpen" style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 no-print">
             <div @click.away="editPartyModalOpen = false" class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
@@ -1224,7 +1479,14 @@
                 selectedChallanObj: null,
                 editPartyModalOpen: false,
                 editPartyForm: { id: null, name: '', gst_no: '', pan_no: '', phone: '', address: '', party_type: 'Customer' },
-                expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '' },
+                expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '', payment_mode: 'Cash', reference_no: '' },
+                cashBankSummary: { cash_balance: 0, bank_balance: 0 },
+                cashBankModalOpen: false,
+                activeCashBankTab: 'Cash',
+                cashBankFilterFrom: '',
+                cashBankFilterTo: '',
+                cashBankLedgerData: { opening_balance: 0, total_inflow: 0, total_outflow: 0, closing_balance: 0, rows: [] },
+                cashBankForm: { date: new Date().toISOString().split('T')[0], entry_type: 'Deposit to Cash', account_type: 'Cash', depositor_name: '', amount: 0, description: 'Working Capital', reference_no: '' },
                 isGenerating: false,
                 pastInvoices: [],
                 pastChallans: [],
@@ -1371,12 +1633,18 @@
                         this.vendorPaymentForm.setoff_remaining = false;
                         return;
                     }
-                    const ch = this.unpaidChallans.find(c => c.id == this.vendorPaymentForm.challan_id);
+                    const ch = (this.unpaidChallans || []).find(c => c.id == this.vendorPaymentForm.challan_id);
                     if(ch) {
                         this.selectedChallanObj = ch;
                         this.vendorPaymentForm.amount_paid = ch.balance;
                         this.vendorPaymentForm.setoff_remaining = false;
                     }
+                },
+
+                getSelectedChallanBalance() {
+                    if(!this.vendorPaymentForm.challan_id) return 0;
+                    const ch = (this.unpaidChallans || []).find(c => c.id == this.vendorPaymentForm.challan_id) || this.selectedChallanObj;
+                    return ch ? (ch.balance || 0) : 0;
                 },
 
                 async recordVendorPayment() {
@@ -1461,7 +1729,10 @@
                         this.showToast('Expense Recorded!');
                         this.expenseForm.amount = 0;
                         this.expenseForm.description = '';
+                        this.expenseForm.reference_no = '';
                         this.loadDashboard();
+                        this.fetchCashBankSummary();
+                        if (this.cashBankModalOpen) this.fetchCashBankLedger();
                     } catch(e) { this.showToast('Error recording expense', 'error'); }
                 },
 
@@ -1812,12 +2083,94 @@
                     } catch(e) { this.showToast('Error saving Challan', 'error'); }
                 },
 
+                async fetchCashBankSummary() {
+                    try {
+                        this.cashBankSummary = await this.apiCall('/api/reports/cash_bank_summary');
+                    } catch(e) {}
+                },
+
                 async loadDashboard() {
                     try {
                         const data = await this.apiCall('/api/reports/dashboard');
                         this.dashboard = data;
                         this.renderChart();
+                        this.fetchCashBankSummary();
                     } catch(e) {}
+                },
+
+                openCashBankModal(tab) {
+                    this.activeCashBankTab = tab || 'Cash';
+                    this.cashBankModalOpen = true;
+                    this.fetchCashBankLedger();
+                },
+
+                async fetchCashBankLedger() {
+                    try {
+                        let url = this.activeCashBankTab === 'Cash' ? '/api/reports/cash_book' : '/api/reports/bank_book';
+                        const params = [];
+                        if (this.cashBankFilterFrom) params.push(`from_date=${this.cashBankFilterFrom}`);
+                        if (this.cashBankFilterTo) params.push(`to_date=${this.cashBankFilterTo}`);
+                        if (params.length) url += '?' + params.join('&');
+                        this.cashBankLedgerData = await this.apiCall(url);
+                    } catch(e) {
+                        this.showToast('Error loading ledger', 'error');
+                    }
+                },
+
+                setCashBankFilter(type) {
+                    const today = new Date().toISOString().split('T')[0];
+                    if (type === 'today') {
+                        this.cashBankFilterFrom = today;
+                        this.cashBankFilterTo = today;
+                    } else if (type === 'this_month') {
+                        const now = new Date();
+                        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                        this.cashBankFilterFrom = firstDay;
+                        this.cashBankFilterTo = today;
+                    } else if (type === 'all') {
+                        this.cashBankFilterFrom = '';
+                        this.cashBankFilterTo = '';
+                    }
+                    this.fetchCashBankLedger();
+                },
+
+                downloadCashBankExcel() {
+                    let url = this.activeCashBankTab === 'Cash' ? '/api/reports/excel/cash_book' : '/api/reports/excel/bank_book';
+                    const params = [];
+                    if (this.cashBankFilterFrom) params.push(`from_date=${this.cashBankFilterFrom}`);
+                    if (this.cashBankFilterTo) params.push(`to_date=${this.cashBankFilterTo}`);
+                    if (params.length) url += '?' + params.join('&');
+                    window.open(url, '_blank');
+                },
+
+                onCashBankTypeChange() {
+                    if (this.cashBankForm.entry_type.includes('Bank')) {
+                        this.cashBankForm.account_type = 'Bank';
+                    } else {
+                        this.cashBankForm.account_type = 'Cash';
+                    }
+                },
+
+                async recordCashBankEntry() {
+                    if (!this.cashBankForm.depositor_name || this.cashBankForm.amount <= 0) {
+                        this.showToast('Enter depositor name and valid amount', 'error');
+                        return;
+                    }
+                    try {
+                        await this.apiCall('/api/cash_bank_entries', {
+                            method: 'POST',
+                            body: JSON.stringify(this.cashBankForm)
+                        });
+                        this.showToast('Inflow / Deposit Entry Recorded!');
+                        this.cashBankForm.amount = 0;
+                        this.cashBankForm.depositor_name = '';
+                        this.cashBankForm.reference_no = '';
+                        this.fetchCashBankSummary();
+                        this.loadDashboard();
+                        if (this.cashBankModalOpen) this.fetchCashBankLedger();
+                    } catch(e) {
+                        this.showToast('Error recording entry', 'error');
+                    }
                 },
 
                 renderChart() {

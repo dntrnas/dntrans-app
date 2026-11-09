@@ -92,6 +92,7 @@ class Challan(Base):
     advance_paid = Column(Float)
     balance_freight = Column(Float)
     payable_at = Column(String)
+    advance_mode = Column(String, default="Cash")
     
     vendor_pan = Column(String)
     apply_tds = Column(Boolean, default=True)
@@ -166,3 +167,16 @@ class Expense(Base):
     description = Column(String)
     amount = Column(Float)
     challan_id = Column(Integer, ForeignKey('challans.id'), nullable=True)
+    payment_mode = Column(String, default="Cash") # 'Cash' or 'Bank'
+    reference_no = Column(String, nullable=True)
+
+class CashBankEntry(Base):
+    __tablename__ = 'cash_bank_entries'
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, default=datetime.date.today)
+    entry_type = Column(String) # 'Deposit to Bank', 'Deposit to Cash', 'Contra: Cash to Bank', 'Contra: Bank to Cash', 'Other Income'
+    account_type = Column(String) # 'Cash' or 'Bank'
+    depositor_name = Column(String) # Who did the deposit / recipient
+    amount = Column(Float)
+    description = Column(String, default="")
+    reference_no = Column(String, nullable=True) # UTR / Cheque / Ref No

@@ -125,6 +125,24 @@ def startup_event():
         db.commit()
     except:
         db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE expenses ADD COLUMN payment_mode VARCHAR DEFAULT 'Cash'"))
+        db.commit()
+    except:
+        db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE expenses ADD COLUMN reference_no VARCHAR"))
+        db.commit()
+    except:
+        db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE challans ADD COLUMN advance_mode VARCHAR DEFAULT 'Cash'"))
+        db.commit()
+    except:
+        db.rollback()
         
     users = [
         ("SuperAdmin", "Admin@123", "SuperAdmin"),
@@ -207,6 +225,7 @@ class ChallanCreate(BaseModel):
     chassis_engine_no: str
     vendor_freight: float
     advance_paid: float
+    advance_mode: Optional[str] = "Cash"
     payable_at: str
     apply_tds: bool = True
     bilty_ids: List[int]
@@ -250,6 +269,17 @@ class ExpenseCreate(BaseModel):
     description: str
     amount: float
     challan_id: Optional[int] = None
+    payment_mode: Optional[str] = "Cash"
+    reference_no: Optional[str] = None
+
+class CashBankEntryCreate(BaseModel):
+    date: date
+    entry_type: str # 'Deposit to Bank', 'Deposit to Cash', 'Contra: Cash to Bank', 'Contra: Bank to Cash', 'Other Income (Cash)', 'Other Income (Bank)'
+    account_type: str # 'Cash' or 'Bank'
+    depositor_name: str # Who brought/deposited the cash (e.g. Owner Deepak, Self, Client name, etc.)
+    amount: float
+    description: Optional[str] = ""
+    reference_no: Optional[str] = None
 
 # --- NON-CASH PAYMENT MODE MAPPING ---
 NON_CASH_VCH_TYPES = {
@@ -909,6 +939,7 @@ def reset_database(db: Session = Depends(get_db), user: models.User = Depends(ge
         raise HTTPException(status_code=403, detail="Only SuperAdmin can reset database")
     
     # Delete in order of foreign keys
+    db.query(models.CashBankEntry).delete()
     db.query(models.InvoiceCharge).delete()
     db.query(models.Expense).delete()
     db.query(models.VendorPayment).delete()
@@ -1613,3 +1644,329 @@ def read_manifest():
 @app.get("/sw.js")
 def read_sw():
     return FileResponse("static/sw.js")
+
+
+# --- CASH & BANK MAINTENANCE ENDPOINTS ---
+
+@app.post("/api/cash_bank_entries")
+def create_cash_bank_entry(entry: CashBankEntryCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    db_entry = models.CashBankEntry(**entry.dict())
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+@app.get("/api/cash_bank_entries")
+def get_cash_bank_entries(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.CashBankEntry).order_by(models.CashBankEntry.date.desc(), models.CashBankEntry.id.desc()).limit(100).all()
+
+@app.delete("/api/cash_bank_entries/{entry_id}")
+def delete_cash_bank_entry(entry_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if user.role != "SuperAdmin":
+        raise HTTPException(status_code=403, detail="Only SuperAdmin can delete entries")
+    entry = db.query(models.CashBankEntry).filter(models.CashBankEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(entry)
+    db.commit()
+    return {"message": "Entry deleted successfully"}
+
+def _get_cash_bank_ledger_data(db: Session, account_type: str, from_date_str: Optional[str] = None, to_date_str: Optional[str] = None):
+    """
+    Computes complete, chronological Cash Book or Bank Book ledger.
+    account_type: 'Cash' or 'Bank'
+    """
+    from_date = datetime.strptime(from_date_str, "%Y-%m-%d").date() if from_date_str else None
+    to_date = datetime.strptime(to_date_str, "%Y-%m-%d").date() if to_date_str else None
+    
+    bank_modes = {'NEFT', 'RTGS', 'Cheque', 'Bank Transfer', 'IMPS', 'UPI', 'Bank', 'Bank / NEFT Refund'}
+    raw_items = []
+    
+    # 1. Customer Payments & Receipts (models.Payment)
+    payments = db.query(models.Payment).all()
+    for p in payments:
+        mode = (p.payment_mode or "").strip()
+        is_cash = (mode == "Cash" or mode == "Cash Refund")
+        is_bank = (mode in bank_modes)
+        
+        if (account_type == "Cash" and is_cash) or (account_type == "Bank" and is_bank):
+            party = db.query(models.Party).filter(models.Party.id == p.party_id).first()
+            p_name = party.name if party else "Customer"
+            inv_info = ""
+            if p.invoice_id:
+                inv = db.query(models.Invoice).filter(models.Invoice.id == p.invoice_id).first()
+                if inv: inv_info = f" (Inv #{inv.bill_no})"
+            
+            particulars = f"Receipt: {p_name}{inv_info}"
+            if party and party.party_type == "Vendor":
+                particulars = f"Vendor Advance Refund: {p_name}"
+                
+            raw_items.append({
+                "id": f"pay_{p.id}",
+                "date": p.date,
+                "vch_type": "Receipt",
+                "particulars": particulars,
+                "ref_no": p.utr_no or mode,
+                "inflow": p.amount_received or 0.0,
+                "outflow": 0.0
+            })
+            
+    # 2. Vendor Payments (models.VendorPayment)
+    vendor_payments = db.query(models.VendorPayment).all()
+    for vp in vendor_payments:
+        mode = (vp.payment_mode or "").strip()
+        # Exclude non-cash setoffs
+        if "Setoff" in mode or "Discount" in mode:
+            continue
+        is_cash = (mode == "Cash")
+        is_bank = (mode in bank_modes)
+        
+        if (account_type == "Cash" and is_cash) or (account_type == "Bank" and is_bank):
+            vendor = db.query(models.Party).filter(models.Party.id == vp.vendor_id).first()
+            v_name = vendor.name if vendor else "Vendor"
+            ch_info = ""
+            if vp.challan_id:
+                ch = db.query(models.Challan).filter(models.Challan.id == vp.challan_id).first()
+                if ch: ch_info = f" (Ch #{ch.challan_no})"
+                
+            raw_items.append({
+                "id": f"vpay_{vp.id}",
+                "date": vp.date,
+                "vch_type": "Payment",
+                "particulars": f"Payment to Vendor: {v_name}{ch_info}",
+                "ref_no": vp.utr_no or mode,
+                "inflow": 0.0,
+                "outflow": vp.amount_paid or 0.0
+            })
+            
+    # 3. Challan Advance Paid (models.Challan)
+    challans = db.query(models.Challan).filter(models.Challan.advance_paid > 0).all()
+    for ch in challans:
+        adv_mode = (ch.advance_mode or "Cash").strip()
+        is_cash = (adv_mode.lower() == "cash")
+        is_bank = (adv_mode in bank_modes or adv_mode.lower() == "bank")
+        
+        if (account_type == "Cash" and is_cash) or (account_type == "Bank" and is_bank):
+            v_name = ch.vendor.name if ch.vendor else "Truck Owner"
+            raw_items.append({
+                "id": f"ch_adv_{ch.id}",
+                "date": ch.date,
+                "vch_type": "Payment (Adv)",
+                "particulars": f"Challan Advance: {v_name} / Driver {ch.driver_name} (Ch #{ch.challan_no})",
+                "ref_no": f"Lorry {ch.lorry_no}",
+                "inflow": 0.0,
+                "outflow": ch.advance_paid or 0.0
+            })
+
+    # 4. General Expenses (models.Expense)
+    expenses = db.query(models.Expense).all()
+    for exp in expenses:
+        exp_mode = (exp.payment_mode or "Cash").strip()
+        is_cash = (exp_mode.lower() == "cash")
+        is_bank = (exp_mode in bank_modes or exp_mode.lower() == "bank")
+        
+        if (account_type == "Cash" and is_cash) or (account_type == "Bank" and is_bank):
+            raw_items.append({
+                "id": f"exp_{exp.id}",
+                "date": exp.date,
+                "vch_type": f"Expense ({exp.expense_type})",
+                "particulars": f"Expense: {exp.description}",
+                "ref_no": exp.reference_no or exp_mode,
+                "inflow": 0.0,
+                "outflow": exp.amount or 0.0
+            })
+
+    # 5. Direct Deposits, Inflows & Contra Entries (models.CashBankEntry)
+    entries = db.query(models.CashBankEntry).all()
+    for e in entries:
+        etype = e.entry_type or ""
+        
+        if account_type == "Cash":
+            if etype in ["Deposit to Cash", "Other Income (Cash)", "Cash Inflow"]:
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Cash Inflow",
+                    "particulars": f"Cash Brought by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": e.amount or 0.0,
+                    "outflow": 0.0
+                })
+            elif etype == "Contra: Bank to Cash":
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Contra",
+                    "particulars": f"Contra: Cash Withdrawn from Bank by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": e.amount or 0.0,
+                    "outflow": 0.0
+                })
+            elif etype == "Contra: Cash to Bank":
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Contra",
+                    "particulars": f"Contra: Cash Deposited into Bank by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": 0.0,
+                    "outflow": e.amount or 0.0
+                })
+                
+        elif account_type == "Bank":
+            if etype in ["Deposit to Bank", "Other Income (Bank)", "Bank Inflow"]:
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Bank Deposit",
+                    "particulars": f"Bank Deposit by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": e.amount or 0.0,
+                    "outflow": 0.0
+                })
+            elif etype == "Contra: Cash to Bank":
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Contra",
+                    "particulars": f"Contra: Cash Deposited from Office by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": e.amount or 0.0,
+                    "outflow": 0.0
+                })
+            elif etype == "Contra: Bank to Cash":
+                raw_items.append({
+                    "id": f"cbe_{e.id}",
+                    "date": e.date,
+                    "vch_type": "Contra",
+                    "particulars": f"Contra: Cash Withdrawn for Office by {e.depositor_name}" + (f" - {e.description}" if e.description else ""),
+                    "ref_no": e.reference_no or "-",
+                    "inflow": 0.0,
+                    "outflow": e.amount or 0.0
+                })
+
+    # Sort all items chronologically
+    raw_items.sort(key=lambda x: (x["date"], str(x["id"])))
+    
+    opening_balance = 0.0
+    filtered_rows = []
+    
+    for item in raw_items:
+        if from_date and item["date"] < from_date:
+            opening_balance += (item["inflow"] - item["outflow"])
+        elif (not from_date or item["date"] >= from_date) and (not to_date or item["date"] <= to_date):
+            filtered_rows.append(item)
+            
+    # Calculate running balance
+    running_balance = opening_balance
+    total_inflow = 0.0
+    total_outflow = 0.0
+    
+    for r in filtered_rows:
+        total_inflow += r["inflow"]
+        total_outflow += r["outflow"]
+        running_balance += (r["inflow"] - r["outflow"])
+        r["date_str"] = r["date"].strftime("%d-%m-%Y")
+        r["balance"] = round(running_balance, 2)
+        r["balance_str"] = f"₹{abs(running_balance):,.2f} {'Dr' if running_balance >= 0 else 'Cr'}"
+        
+    closing_balance = round(running_balance, 2)
+    
+    return {
+        "account_type": account_type,
+        "from_date": from_date.strftime("%d-%m-%Y") if from_date else "Beginning",
+        "to_date": to_date.strftime("%d-%m-%Y") if to_date else "Today",
+        "opening_balance": round(opening_balance, 2),
+        "total_inflow": round(total_inflow, 2),
+        "total_outflow": round(total_outflow, 2),
+        "closing_balance": closing_balance,
+        "rows": filtered_rows
+    }
+
+@app.get("/api/reports/cash_bank_summary")
+def get_cash_bank_summary(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Provides current live Cash in Hand and Bank Balance for dashboard display."""
+    cash_data = _get_cash_bank_ledger_data(db, "Cash")
+    bank_data = _get_cash_bank_ledger_data(db, "Bank")
+    return {
+        "cash_balance": cash_data["closing_balance"],
+        "bank_balance": bank_data["closing_balance"],
+        "cash_inflow_today": cash_data["total_inflow"],
+        "bank_inflow_today": bank_data["total_inflow"]
+    }
+
+@app.get("/api/reports/cash_book")
+def get_cash_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return _get_cash_bank_ledger_data(db, "Cash", from_date, to_date)
+
+@app.get("/api/reports/bank_book")
+def get_bank_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return _get_cash_bank_ledger_data(db, "Bank", from_date, to_date)
+
+@app.get("/api/reports/excel/cash_book")
+def excel_cash_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    data = _get_cash_bank_ledger_data(db, "Cash", from_date, to_date)
+    wb = Workbook(); ws = wb.active; ws.title = "Cash Book"
+    headers = ["Sr.", "Date", "Voucher Type", "Particulars", "Reference / Mode", "Inflow / Debit (₹)", "Outflow / Credit (₹)", "Running Balance (₹)"]
+    sub = f"Period: {data['from_date']} to {data['to_date']} | Opening Balance: ₹{data['opening_balance']:,.2f}"
+    bdr = _setup_sheet(ws, f"Cash Book (Cash in Hand Ledger) — {sub}", headers)
+    
+    # Opening balance row
+    ws.cell(row=5, column=1, value="-").border = bdr
+    ws.cell(row=5, column=2, value=data['from_date']).border = bdr
+    ws.cell(row=5, column=3, value="Opening Balance").border = bdr
+    ws.cell(row=5, column=4, value="Opening Balance b/f").border = bdr
+    ws.cell(row=5, column=5, value="-").border = bdr
+    ws.cell(row=5, column=6, value=data['opening_balance'] if data['opening_balance'] >= 0 else 0).border = bdr
+    ws.cell(row=5, column=7, value=abs(data['opening_balance']) if data['opening_balance'] < 0 else 0).border = bdr
+    c = ws.cell(row=5, column=8, value=data['opening_balance']); c.border = bdr; c.number_format = '#,##0.00'
+    for ci in [6, 7]: ws.cell(row=5, column=ci).number_format = '#,##0.00'
+    
+    sums = {6: (data['opening_balance'] if data['opening_balance'] >= 0 else 0), 7: (abs(data['opening_balance']) if data['opening_balance'] < 0 else 0)}
+    ri = 6
+    for i, r in enumerate(data['rows'], 1):
+        vals = [i, r['date_str'], r['vch_type'], r['particulars'], r['ref_no'], r['inflow'], r['outflow'], r['balance']]
+        for ci, v in enumerate(vals, 1):
+            c = ws.cell(row=ri, column=ci, value=v); c.border = bdr
+            if ci in [6, 7, 8]: c.number_format = '#,##0.00'
+        sums[6] += r['inflow']
+        sums[7] += r['outflow']
+        ri += 1
+        
+    _add_total_row(ws, ri, sums, 8, bdr)
+    _auto_width(ws)
+    return _excel_response(wb, "Cash_Book_Ledger.xlsx")
+
+@app.get("/api/reports/excel/bank_book")
+def excel_bank_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    data = _get_cash_bank_ledger_data(db, "Bank", from_date, to_date)
+    wb = Workbook(); ws = wb.active; ws.title = "Bank Book"
+    headers = ["Sr.", "Date", "Voucher Type", "Particulars", "Reference / Cheque / UTR", "Inflow / Debit (₹)", "Outflow / Credit (₹)", "Running Balance (₹)"]
+    sub = f"Period: {data['from_date']} to {data['to_date']} | Opening Balance: ₹{data['opening_balance']:,.2f}"
+    bdr = _setup_sheet(ws, f"Bank Book (Bank Account Ledger) — {sub}", headers)
+    
+    # Opening balance row
+    ws.cell(row=5, column=1, value="-").border = bdr
+    ws.cell(row=5, column=2, value=data['from_date']).border = bdr
+    ws.cell(row=5, column=3, value="Opening Balance").border = bdr
+    ws.cell(row=5, column=4, value="Opening Balance b/f").border = bdr
+    ws.cell(row=5, column=5, value="-").border = bdr
+    ws.cell(row=5, column=6, value=data['opening_balance'] if data['opening_balance'] >= 0 else 0).border = bdr
+    ws.cell(row=5, column=7, value=abs(data['opening_balance']) if data['opening_balance'] < 0 else 0).border = bdr
+    c = ws.cell(row=5, column=8, value=data['opening_balance']); c.border = bdr; c.number_format = '#,##0.00'
+    for ci in [6, 7]: ws.cell(row=5, column=ci).number_format = '#,##0.00'
+    
+    sums = {6: (data['opening_balance'] if data['opening_balance'] >= 0 else 0), 7: (abs(data['opening_balance']) if data['opening_balance'] < 0 else 0)}
+    ri = 6
+    for i, r in enumerate(data['rows'], 1):
+        vals = [i, r['date_str'], r['vch_type'], r['particulars'], r['ref_no'], r['inflow'], r['outflow'], r['balance']]
+        for ci, v in enumerate(vals, 1):
+            c = ws.cell(row=ri, column=ci, value=v); c.border = bdr
+            if ci in [6, 7, 8]: c.number_format = '#,##0.00'
+        sums[6] += r['inflow']
+        sums[7] += r['outflow']
+        ri += 1
+        
+    _add_total_row(ws, ri, sums, 8, bdr)
+    _auto_width(ws)
+    return _excel_response(wb, "Bank_Book_Ledger.xlsx")
