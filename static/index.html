@@ -660,23 +660,30 @@
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                             <label class="text-xs font-bold text-gray-500 uppercase">Driver Name</label>
                             <input x-model="challanForm.driver_name" type="text" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
                         </div>
                         <div>
-                            <label class="text-xs font-bold text-gray-500 uppercase">Vendor Freight (Lorry Hire) ₹</label>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Vendor Freight (₹)</label>
                             <input x-model.number="challanForm.vendor_freight" type="number" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
                         </div>
                         <div>
                             <label class="text-xs font-bold text-gray-500 uppercase">Advance Paid (₹)</label>
                             <input x-model.number="challanForm.advance_paid" type="number" required class="w-full px-4 py-2 rounded border border-gray-300 mt-1">
                         </div>
-                        <div class="flex items-center gap-2 mt-6">
-                            <input type="checkbox" x-model="challanForm.apply_tds" id="apply_tds" class="w-5 h-5 text-blue-600 rounded">
-                            <label for="apply_tds" class="font-bold text-gray-700">Apply TDS Deduction?</label>
+                        <div>
+                            <label class="text-xs font-bold text-blue-800 uppercase flex items-center gap-1">Advance Mode</label>
+                            <select x-model="challanForm.advance_mode" class="w-full px-4 py-2 rounded border border-blue-400 mt-1 font-bold text-blue-900 bg-blue-50 focus:bg-white">
+                                <option value="Cash">Cash (Office Drawer)</option>
+                                <option value="Bank">Bank / Online (NEFT/UPI)</option>
+                            </select>
                         </div>
+                    </div>
+                    <div class="flex items-center gap-2 mt-3">
+                        <input type="checkbox" x-model="challanForm.apply_tds" id="apply_tds" class="w-5 h-5 text-blue-600 rounded">
+                        <label for="apply_tds" class="font-bold text-gray-700">Apply TDS Deduction (194C)?</label>
                     </div>
 
                     <!-- Live TDS and Balance Breakdown Banner -->
@@ -688,7 +695,7 @@
                                 <span x-text="challanForm.apply_tds ? '₹' + getEstimatedTds().toFixed(2) + ' (' + getEstimatedTdsRate() + ')' : 'None (0%)'"></span>
                             </span>
                         </div>
-                        <div><span class="text-gray-500 font-medium">Advance Paid:</span> <span class="font-bold text-blue-700">₹<span x-text="(challanForm.advance_paid || 0).toFixed(2)"></span></span></div>
+                        <div><span class="text-gray-500 font-medium">Advance Paid:</span> <span class="font-bold text-blue-700">₹<span x-text="(challanForm.advance_paid || 0).toFixed(2)"></span> (<span x-text="challanForm.advance_mode || 'Cash'"></span>)</span></div>
                         <div>
                             <span class="text-gray-500 font-medium">Net Payable:</span> 
                             <span class="font-black text-sm" :class="getEstimatedNetPayable() >= 0 ? 'text-green-700' : 'text-red-700'">
@@ -1215,6 +1222,7 @@
                                 <th class="p-2 text-right text-green-700">Inflow / Dr (₹)</th>
                                 <th class="p-2 text-right text-red-700">Outflow / Cr (₹)</th>
                                 <th class="p-2 text-right">Running Balance (₹)</th>
+                                <th class="p-2 text-center" x-show="role === 'SuperAdmin'">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 font-medium">
@@ -1226,6 +1234,7 @@
                                     <td class="p-2 text-right text-green-800" x-text="cashBankLedgerData.opening_balance >= 0 ? '₹' + cashBankLedgerData.opening_balance.toFixed(2) : '-'"></td>
                                     <td class="p-2 text-right text-red-800" x-text="cashBankLedgerData.opening_balance < 0 ? '₹' + Math.abs(cashBankLedgerData.opening_balance).toFixed(2) : '-'"></td>
                                     <td class="p-2 text-right font-black" x-text="'₹' + cashBankLedgerData.opening_balance.toFixed(2)"></td>
+                                    <td x-show="role === 'SuperAdmin'"></td>
                                 </tr>
                             </template>
                             <template x-for="r in (cashBankLedgerData.rows || [])" :key="r.id">
@@ -1241,11 +1250,25 @@
                                     <td class="p-2 text-right font-bold text-green-700" x-text="r.inflow > 0 ? '₹' + r.inflow.toFixed(2) : '-'"></td>
                                     <td class="p-2 text-right font-bold text-red-700" x-text="r.outflow > 0 ? '₹' + r.outflow.toFixed(2) : '-'"></td>
                                     <td class="p-2 text-right font-black text-gray-900" x-text="r.balance_str"></td>
+                                    <td class="p-2 text-center whitespace-nowrap" x-show="role === 'SuperAdmin'">
+                                        <template x-if="r.id && r.id.startsWith('cbe_')">
+                                            <button @click="deleteCashBankEntry(r.id.replace('cbe_', ''))" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                        </template>
+                                        <template x-if="r.id && r.id.startsWith('exp_')">
+                                            <button @click="deleteExpense(r.id.replace('exp_', ''))" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                        </template>
+                                        <template x-if="r.id && r.id.startsWith('pay_')">
+                                            <button @click="deletePayment(r.id.replace('pay_', ''))" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                        </template>
+                                        <template x-if="r.id && r.id.startsWith('vpay_')">
+                                            <button @click="deleteVendorPayment(r.id.replace('vpay_', ''))" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                        </template>
+                                    </td>
                                 </tr>
                             </template>
                             <template x-if="!cashBankLedgerData.rows || cashBankLedgerData.rows.length === 0">
                                 <tr>
-                                    <td colspan="7" class="p-8 text-center text-gray-400 italic">No cash/bank entries found for the selected period.</td>
+                                    <td colspan="8" class="p-8 text-center text-gray-400 italic">No cash/bank entries found for the selected period.</td>
                                 </tr>
                             </template>
                         </tbody>
@@ -1469,7 +1492,7 @@
                 
                 partyForm: { name: '', gst_no: '', pan_no: '', party_type: 'Customer', address: '' },
                 lrForm: { lr_no: '', date: new Date().toISOString().split('T')[0], origin: 'Ahmedabad', destination: '', lorry_no: '', consignor_id: '', consignee_id: '', gst_paid_by: 'CONSIGNEE', delivery_address: '-', risk_type: 'OWNER RISK', packages: '', description: 'Goods', actual_weight: 0, charged_weight: 0, rate: 0, is_fixed_rate: false, declared_value: null, is_direct_lr: false },
-                challanForm: { challan_no: '', date: new Date().toISOString().split('T')[0], origin: '', destination: '', lorry_no: '', vendor_id: '', driver_name: 'Driver', license_no: 'N/A', driver_phone: '0000', chassis_engine_no: 'N/A', vendor_freight: 0, advance_paid: 0, payable_at: 'Ahmedabad', apply_tds: true, bilty_ids: [] },
+                challanForm: { challan_no: '', date: new Date().toISOString().split('T')[0], origin: '', destination: '', lorry_no: '', vendor_id: '', driver_name: 'Driver', license_no: 'N/A', driver_phone: '0000', chassis_engine_no: 'N/A', vendor_freight: 0, advance_paid: 0, advance_mode: 'Cash', payable_at: 'Ahmedabad', apply_tds: true, bilty_ids: [] },
                 billingForm: { party_id: '', bill_no: '', date: new Date().toISOString().split('T')[0], bilty_ids: [], bank_name: 'HDFC', account_no: '123', ifsc_code: 'HDFC', branch: 'Main', other_charges: [] },
                 reportPartyId: '',
                 reportVendorId: '',
@@ -1477,6 +1500,8 @@
                 paymentForm: { date: new Date().toISOString().split('T')[0], party_id: '', invoice_id: '', amount_received: 0, payment_mode: 'NEFT', utr_no: '' },
                 vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '', setoff_remaining: false },
                 selectedChallanObj: null,
+                editExpenseModalOpen: false,
+                editExpenseForm: { id: null, date: '', expense_type: 'Office', description: '', amount: 0, payment_mode: 'Cash', reference_no: '' },
                 editPartyModalOpen: false,
                 editPartyForm: { id: null, name: '', gst_no: '', pan_no: '', phone: '', address: '', party_type: 'Customer' },
                 expenseForm: { date: new Date().toISOString().split('T')[0], expense_type: 'Office', description: '', amount: 0, challan_id: '', payment_mode: 'Cash', reference_no: '' },
@@ -1784,6 +1809,52 @@
                     }
                 },
 
+                openEditExpenseModal(exp) {
+                    this.editExpenseForm = {
+                        id: exp.id,
+                        date: exp.date,
+                        expense_type: exp.expense_type || 'Office',
+                        description: exp.description || '',
+                        amount: exp.amount || 0,
+                        payment_mode: exp.payment_mode || 'Cash',
+                        reference_no: exp.reference_no || ''
+                    };
+                    this.editExpenseModalOpen = true;
+                },
+
+                async updateExpense() {
+                    try {
+                        await this.apiCall(`/api/expenses/${this.editExpenseForm.id}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(this.editExpenseForm)
+                        });
+                        this.showToast('Expense updated successfully!');
+                        this.editExpenseModalOpen = false;
+                        if(this.ledgerType === 'expense') {
+                            const expRes = await this.apiCall('/api/expenses');
+                            this.ledgerExpenses = expRes || [];
+                        }
+                        if (this.cashBankModalOpen) {
+                            this.fetchCashBankLedger();
+                        }
+                        this.loadDashboard();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error updating expense', 'error');
+                    }
+                },
+
+                async deleteCashBankEntry(id) {
+                    if(!confirm('Are you sure you want to delete this Cash/Bank entry? This will reverse its balance effect.')) return;
+                    try {
+                        await this.apiCall(`/api/cash_bank_entries/${id}`, { method: 'DELETE' });
+                        this.showToast('Entry deleted successfully');
+                        if (this.cashBankModalOpen) this.fetchCashBankLedger();
+                        this.loadDashboard();
+                    } catch(e) {
+                        this.showToast(e.message || 'Error deleting entry', 'error');
+                    }
+                },
+
                 async deleteExpense(id) {
                     if(!confirm('Are you sure you want to delete this expense record?')) return;
                     try {
@@ -1792,6 +1863,7 @@
                         if(this.ledgerType === 'expense') {
                             this.openLedger(null, 'expense');
                         }
+                        if (this.cashBankModalOpen) this.fetchCashBankLedger();
                         this.loadDashboard();
                     } catch(e) {
                         this.showToast(e.message || 'Error deleting expense', 'error');
@@ -2140,7 +2212,8 @@
                     if (this.cashBankFilterFrom) params.push(`from_date=${this.cashBankFilterFrom}`);
                     if (this.cashBankFilterTo) params.push(`to_date=${this.cashBankFilterTo}`);
                     if (params.length) url += '?' + params.join('&');
-                    window.open(url, '_blank');
+                    const defaultFileName = this.activeCashBankTab === 'Cash' ? 'Cash_Book_Ledger.xlsx' : 'Bank_Book_Ledger.xlsx';
+                    this.downloadExcelReport(url, defaultFileName);
                 },
 
                 onCashBankTypeChange() {
@@ -2421,30 +2494,48 @@
                         <div class="space-y-6">
                             <!-- Expense History -->
                             <div class="bg-white border rounded shadow-sm">
-                                <h3 class="font-bold text-purple-700 bg-purple-50 p-3 border-b">General Expense Ledger</h3>
+                                <h3 class="font-bold text-purple-700 bg-purple-50 p-3 border-b flex justify-between items-center">
+                                    <span>General Expense Ledger</span>
+                                    <span class="text-xs text-purple-600 font-medium">Click ✏️ Edit to change Cash / Bank mode or update amounts</span>
+                                </h3>
                                 <table class="w-full text-left text-sm">
                                     <thead class="bg-gray-100 text-gray-600">
-                                        <tr><th class="p-2">Date</th><th class="p-2">Type</th><th class="p-2">Description</th><th class="p-2 text-right">Amount</th><th class="p-2 text-center" x-show="role === 'SuperAdmin'">Action</th></tr>
+                                        <tr>
+                                            <th class="p-2">Date</th>
+                                            <th class="p-2">Type</th>
+                                            <th class="p-2">Description</th>
+                                            <th class="p-2">Paid Via</th>
+                                            <th class="p-2">Ref / UTR</th>
+                                            <th class="p-2 text-right">Amount</th>
+                                            <th class="p-2 text-center">Action</th>
+                                        </tr>
                                     </thead>
                                     <tbody>
                                         <template x-for="exp in ledgerExpenses" :key="exp.id">
                                             <tr class="border-t hover:bg-gray-50">
                                                 <td class="p-2" x-text="formatDate(exp.date)"></td>
-                                                <td class="p-2 font-bold" x-text="exp.expense_type"></td>
+                                                <td class="p-2 font-bold text-gray-800" x-text="exp.expense_type"></td>
                                                 <td class="p-2" x-text="exp.description"></td>
-                                                <td class="p-2 text-right font-bold text-purple-600" x-text="'₹' + exp.amount.toFixed(2)"></td>
-                                                <td class="p-2 text-center" x-show="role === 'SuperAdmin'">
-                                                    <button @click="deleteExpense(exp.id)" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200">Delete</button>
+                                                <td class="p-2">
+                                                    <span class="px-2 py-0.5 rounded text-[11px] font-bold"
+                                                          :class="(exp.payment_mode || 'Cash') === 'Cash' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'"
+                                                          x-text="exp.payment_mode || 'Cash'"></span>
+                                                </td>
+                                                <td class="p-2 text-xs text-gray-500" x-text="exp.reference_no || '-'"></td>
+                                                <td class="p-2 text-right font-bold text-purple-700" x-text="'₹' + exp.amount.toFixed(2)"></td>
+                                                <td class="p-2 text-center whitespace-nowrap">
+                                                    <button @click="openEditExpenseModal(exp)" class="text-xs text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded font-bold border border-blue-300 mr-1.5 transition">✏️ Edit</button>
+                                                    <button x-show="role === 'SuperAdmin'" @click="deleteExpense(exp.id)" class="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded font-bold border border-red-200 transition">Delete</button>
                                                 </td>
                                             </tr>
                                         </template>
-                                        <tr x-show="ledgerExpenses.length === 0"><td colspan="4" class="p-4 text-center text-gray-500 italic">No expenses recorded.</td></tr>
+                                        <tr x-show="ledgerExpenses.length === 0"><td colspan="7" class="p-4 text-center text-gray-500 italic">No expenses recorded.</td></tr>
                                     </tbody>
                                     <tfoot x-show="ledgerExpenses.length > 0" class="bg-purple-50 font-bold border-t border-purple-200">
                                         <tr>
-                                            <td colspan="3" class="p-2 text-right">Total Booked Expenses:</td>
-                                            <td class="p-2 text-right text-purple-700" x-text="'₹' + ledgerExpenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)"></td>
-                                            <td x-show="role === 'SuperAdmin'"></td>
+                                            <td colspan="5" class="p-2 text-right">Total Booked Expenses:</td>
+                                            <td class="p-2 text-right text-purple-700 font-black text-base" x-text="'₹' + ledgerExpenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)"></td>
+                                            <td></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -2454,5 +2545,65 @@
                 </div>
             </div>
         </div>
+    
+        <!-- EDIT EXPENSE MODAL -->
+        <div x-show="editExpenseModalOpen" style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 no-print">
+            <div @click.away="editExpenseModalOpen = false" class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
+                <div class="bg-purple-800 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-black text-base flex items-center gap-2">
+                        <span>✏️ Edit Expense & Payment Mode</span>
+                    </h3>
+                    <button type="button" @click="editExpenseModalOpen = false" class="text-white hover:text-gray-300 font-bold text-xl">&times;</button>
+                </div>
+                <form @submit.prevent="updateExpense" class="p-6 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-600 uppercase">Date</label>
+                            <input x-model="editExpenseForm.date" type="date" required class="w-full px-3 py-2 border rounded mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-600 uppercase">Expense Type</label>
+                            <select x-model="editExpenseForm.expense_type" class="w-full px-3 py-2 border rounded mt-1 font-semibold text-gray-800">
+                                <option value="Office">Office</option>
+                                <option value="Toll">Toll</option>
+                                <option value="Maintenance">Maintenance</option>
+                                <option value="Diesel">Diesel</option>
+                                <option value="Driver Bhatta">Driver Bhatta</option>
+                                <option value="Printing & Stationary">Printing & Stationary</option>
+                                <option value="Tea & Snacks">Tea & Snacks</option>
+                                <option value="Legal & Professional">Legal & Professional</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-600 uppercase">Amount (₹)</label>
+                            <input x-model.number="editExpenseForm.amount" type="number" step="0.01" required class="w-full px-3 py-2 border rounded mt-1 font-bold text-purple-700">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-blue-800 uppercase flex items-center gap-1">Paid Through (Mode)</label>
+                            <select x-model="editExpenseForm.payment_mode" class="w-full px-3 py-2 border border-blue-400 rounded mt-1 font-bold bg-blue-50 text-blue-900">
+                                <option value="Cash">Cash (Office Drawer)</option>
+                                <option value="Bank">Bank / Online (NEFT / UPI / Cheque)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 uppercase">Reference / Cheque / UTR No.</label>
+                        <input x-model="editExpenseForm.reference_no" type="text" placeholder="e.g. UTR123456, Cheque #0012, or Cash Voucher" class="w-full px-3 py-2 border rounded mt-1">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 uppercase">Description / Purpose</label>
+                        <input x-model="editExpenseForm.description" type="text" required class="w-full px-3 py-2 border rounded mt-1">
+                    </div>
+                    <div class="flex justify-end gap-3 pt-3 border-t">
+                        <button type="button" @click="editExpenseModalOpen = false" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300">Cancel</button>
+                        <button type="submit" class="px-5 py-2 bg-purple-700 text-white font-bold rounded hover:bg-purple-800 shadow">Save Changes & Recalculate Ledgers</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
     </body>
 </html>

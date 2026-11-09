@@ -49,6 +49,7 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 def get_db():
     db = SessionLocal()
@@ -90,6 +91,31 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     if user is None:
         raise credentials_exception
     return user
+
+async def get_current_user_flexible(
+    header_token: Optional[str] = Depends(oauth2_scheme_optional),
+    token: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    actual_token = header_token or token
+    if not actual_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    try:
+        payload = jwt.decode(actual_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
 
 @app.on_event("startup")
 def startup_event():
@@ -262,6 +288,15 @@ class VendorPaymentCreate(BaseModel):
     amount_paid: float
     payment_mode: str
     utr_no: Optional[str] = None
+
+class ExpenseUpdate(BaseModel):
+    date: Optional[date] = None
+    expense_type: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    challan_id: Optional[int] = None
+    payment_mode: Optional[str] = None
+    reference_no: Optional[str] = None
 
 class ExpenseCreate(BaseModel):
     date: date
@@ -657,6 +692,18 @@ def create_expense(expense: ExpenseCreate, db: Session = Depends(get_db), user: 
     db.commit()
     db.refresh(db_expense)
     return db_expense
+
+@app.put("/api/expenses/{expense_id}")
+def update_expense(expense_id: int, expense_update: ExpenseUpdate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    expense = db.query(models.Expense).filter(models.Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    data = expense_update.dict(exclude_unset=True)
+    for key, value in data.items():
+        setattr(expense, key, value)
+    db.commit()
+    db.refresh(expense)
+    return expense
 
 @app.delete("/api/expenses/{expense_id}")
 def delete_expense(expense_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
@@ -1904,7 +1951,7 @@ def get_bank_book(from_date: Optional[str] = None, to_date: Optional[str] = None
     return _get_cash_bank_ledger_data(db, "Bank", from_date, to_date)
 
 @app.get("/api/reports/excel/cash_book")
-def excel_cash_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def excel_cash_book(from_date: Optional[str] = None, to_date: Optional[str] = None, token: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user_flexible)):
     data = _get_cash_bank_ledger_data(db, "Cash", from_date, to_date)
     wb = Workbook(); ws = wb.active; ws.title = "Cash Book"
     headers = ["Sr.", "Date", "Voucher Type", "Particulars", "Reference / Mode", "Inflow / Debit (₹)", "Outflow / Credit (₹)", "Running Balance (₹)"]
@@ -1938,7 +1985,7 @@ def excel_cash_book(from_date: Optional[str] = None, to_date: Optional[str] = No
     return _excel_response(wb, "Cash_Book_Ledger.xlsx")
 
 @app.get("/api/reports/excel/bank_book")
-def excel_bank_book(from_date: Optional[str] = None, to_date: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def excel_bank_book(from_date: Optional[str] = None, to_date: Optional[str] = None, token: Optional[str] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user_flexible)):
     data = _get_cash_bank_ledger_data(db, "Bank", from_date, to_date)
     wb = Workbook(); ws = wb.active; ws.title = "Bank Book"
     headers = ["Sr.", "Date", "Voucher Type", "Particulars", "Reference / Cheque / UTR", "Inflow / Debit (₹)", "Outflow / Credit (₹)", "Running Balance (₹)"]
