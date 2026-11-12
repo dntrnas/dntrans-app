@@ -99,6 +99,8 @@ class Challan(Base):
     tds_amount = Column(Float, default=0.0)
     tds_rate = Column(Float, default=0.0)
     net_payable = Column(Float)
+    extra_charges = Column(Float, default=0.0)
+    extra_charge_reason = Column(String, default="")
     penalty_per_day = Column(Float, nullable=True)
     
     vendor = relationship("Party")
@@ -156,6 +158,7 @@ class VendorPayment(Base):
     amount_paid = Column(Float)
     payment_mode = Column(String)
     utr_no = Column(String, nullable=True)
+    extra_charge_booked = Column(Float, default=0.0)
     
     vendor = relationship("Party")
 

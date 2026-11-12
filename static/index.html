@@ -283,12 +283,35 @@
                             </span>
                         </div>
 
-                        <!-- Extra Payment / Halting Banner -->
+                        <!-- Extra Payment / Halting Banner (Book as Extra Charge on Challan) -->
                         <div x-show="vendorPaymentForm.challan_id && vendorPaymentForm.amount_paid > getSelectedChallanBalance()" 
                              x-transition
-                             class="p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-xs text-amber-900 font-bold">
-                            <span>⚠️ Extra Halting / Charge: Paying ₹<span x-text="(vendorPaymentForm.amount_paid - getSelectedChallanBalance()).toFixed(2)"></span> above challan balance.</span>
-                            <span class="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-bold">Extra Trip Cost</span>
+                             class="p-3 bg-amber-50 border-2 border-amber-400 rounded-lg shadow-sm space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-3">
+                                    <input type="checkbox" id="vendor_extra_charge_check" x-model="vendorPaymentForm.book_extra_charge" class="w-5 h-5 text-amber-600 rounded cursor-pointer focus:ring-amber-500">
+                                    <label for="vendor_extra_charge_check" class="text-xs font-bold text-amber-950 cursor-pointer select-none">
+                                        <span class="text-sm font-black text-amber-900">⚡ Book ₹<span x-text="(vendorPaymentForm.amount_paid - getSelectedChallanBalance()).toFixed(2)"></span> Excess as Extra Charge (Halting / Extra Weight)?</span>
+                                        <span class="block text-[11px] font-medium text-amber-800 mt-0.5">
+                                            Credits vendor on Challan #<span x-text="getSelectedChallanNo()"></span> so this challan is 100% settled, increases trip cost in Margin Report, and keeps subsequent bills (pending ₹5,000) intact without negative Dr balance.
+                                        </span>
+                                    </label>
+                                </div>
+                                <span class="text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap">
+                                    Excess: +₹<span x-text="(vendorPaymentForm.amount_paid - getSelectedChallanBalance()).toFixed(2)"></span>
+                                </span>
+                            </div>
+                            <div x-show="vendorPaymentForm.book_extra_charge" class="flex items-center gap-3 pt-2 border-t border-amber-200 text-xs">
+                                <span class="font-bold text-amber-900 whitespace-nowrap">Charge Type / Reason:</span>
+                                <select x-model="vendorPaymentForm.extra_charge_reason" class="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded font-bold text-amber-900 text-xs">
+                                    <option value="Halting / Detention Charges">Halting / Detention Charges</option>
+                                    <option value="Extra Weight / Excess Load Charges">Extra Weight / Excess Load Charges</option>
+                                    <option value="Loading / Unloading Detention">Loading / Unloading Detention</option>
+                                    <option value="Extra Route / Diesel Cost">Extra Route / Diesel Cost</option>
+                                    <option value="Toll / Penalty Reimbursement">Toll / Penalty Reimbursement</option>
+                                    <option value="Extra Trip Charges">Extra Trip Charges</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
@@ -1498,7 +1521,7 @@
                 reportVendorId: '',
                 receiptPartyType: 'Customer',
                 paymentForm: { date: new Date().toISOString().split('T')[0], party_id: '', invoice_id: '', amount_received: 0, payment_mode: 'NEFT', utr_no: '' },
-                vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '', setoff_remaining: false },
+                vendorPaymentForm: { date: new Date().toISOString().split('T')[0], vendor_id: '', challan_id: '', amount_paid: 0, payment_mode: 'NEFT', utr_no: '', setoff_remaining: false, book_extra_charge: true, extra_charge_reason: 'Halting / Detention Charges' },
                 selectedChallanObj: null,
                 editExpenseModalOpen: false,
                 editExpenseForm: { id: null, date: '', expense_type: 'Office', description: '', amount: 0, payment_mode: 'Cash', reference_no: '' },
@@ -1669,14 +1692,31 @@
                 getSelectedChallanBalance() {
                     if(!this.vendorPaymentForm.challan_id) return 0;
                     const ch = (this.unpaidChallans || []).find(c => c.id == this.vendorPaymentForm.challan_id) || this.selectedChallanObj;
-                    return ch ? (ch.balance || 0) : 0;
+                    return ch ? (Number(ch.balance) || 0) : 0;
+                },
+
+                getSelectedChallanNo() {
+                    if(!this.vendorPaymentForm.challan_id) return '';
+                    const ch = (this.unpaidChallans || []).find(c => c.id == this.vendorPaymentForm.challan_id) || this.selectedChallanObj;
+                    return ch ? ch.challan_no : '';
                 },
 
                 async recordVendorPayment() {
                     if(!this.vendorPaymentForm.vendor_id || this.vendorPaymentForm.amount_paid <= 0) {
                         this.showToast('Select a vendor and enter a valid amount', 'error'); return;
                     }
+                    const challanBal = this.getSelectedChallanBalance();
+                    const isExcess = this.vendorPaymentForm.challan_id && this.vendorPaymentForm.amount_paid > challanBal;
+                    
                     const payload = { ...this.vendorPaymentForm, challan_id: this.vendorPaymentForm.challan_id || null };
+                    if (isExcess && this.vendorPaymentForm.book_extra_charge) {
+                        payload.book_extra_charge = true;
+                        payload.extra_charge_amount = Number((this.vendorPaymentForm.amount_paid - challanBal).toFixed(2));
+                        payload.extra_charge_reason = this.vendorPaymentForm.extra_charge_reason || 'Halting / Detention Charges';
+                    } else {
+                        payload.book_extra_charge = false;
+                        payload.extra_charge_amount = 0;
+                    }
                     delete payload.setoff_remaining;
                     
                     try {
@@ -2305,16 +2345,26 @@
                             </tr>`;
                         });
                         
-                        if (charges && charges.length > 0) {
-                            charges.forEach(ch => {
-                                rows += `<tr style="border-bottom: 1px solid black; font-style: italic;">
+                        // Render Other Charges rows directly in table matching columns
+                        const otherChargesList = this.billingForm.other_charges || [];
+                        otherChargesList.forEach(ch => {
+                            if ((ch.charge_name && ch.charge_name.trim()) || (Number(ch.amount) || 0) > 0) {
+                                rows += `<tr style="border-bottom: 1px solid black;">
                                     <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
-                                    <td colspan="5" style="border-right: 1px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name}</td>
-                                    <td colspan="5" style="border-right: 1px solid black; padding: 5px; text-align: right;">Incidental / Other Charge</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 2px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name || 'Other Charges'}</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
                                     <td style="padding: 5px; text-align: right; font-weight: bold;">${(Number(ch.amount) || 0).toFixed(2)}</td>
                                 </tr>`;
-                            });
-                        }
+                            }
+                        });
 
                         while(i <= 2) {
                             rows += `<tr style="border-bottom: 1px solid black; height: 25px;">
@@ -2334,23 +2384,7 @@
                         }
 
                         document.getElementById('print_inv_body').innerHTML = rows;
-                        
                         setTimeout(() => window.print(), 500);
-                        
-                        // Append other charges to print template
-                        if (this.billingForm.other_charges && this.billingForm.other_charges.length > 0) {
-                            this.billingForm.other_charges.forEach(ch => {
-                                if(ch.charge_name && ch.amount > 0) {
-                                    rows += `<tr style="border-bottom: 1px solid black; font-style: italic;">
-                                        <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
-                                        <td colspan="5" style="border-right: 1px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name}</td>
-                                        <td colspan="5" style="border-right: 1px solid black; padding: 5px; text-align: right;">Incidental / Other Charge</td>
-                                        <td style="padding: 5px; text-align: right; font-weight: bold;">${(Number(ch.amount) || 0).toFixed(2)}</td>
-                                    </tr>`;
-                                }
-                            });
-                        }
-                        document.getElementById('print_inv_body').innerHTML = rows;
 
                         this.billingForm.bill_no = '';
                         this.billingForm.other_charges = [];
@@ -2403,6 +2437,26 @@
                                 <td style="border-right: 1px solid black; padding: 5px;">${lr.is_fixed_rate ? 'Fixed' : lr.rate}</td>
                                 <td style="padding: 5px; text-align: right;">${(lr.total_freight_charges || 0).toFixed(2)}</td>
                             </tr>`;
+                        });
+
+                        // Render Other Charges in printed bill
+                        (charges || []).forEach(ch => {
+                            if ((ch.charge_name && ch.charge_name.trim()) || (Number(ch.amount) || 0) > 0) {
+                                rows += `<tr style="border-bottom: 1px solid black;">
+                                    <td style="border-right: 1px solid black; padding: 5px;">${i++}</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 2px solid black; padding: 5px; font-weight: bold; color: #1e3a8a;">${ch.charge_name || 'Other Charges'}</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="border-right: 1px solid black; padding: 5px;">-</td>
+                                    <td style="padding: 5px; text-align: right; font-weight: bold;">${(Number(ch.amount) || 0).toFixed(2)}</td>
+                                </tr>`;
+                            }
                         });
                         
                         while(i <= 2) {

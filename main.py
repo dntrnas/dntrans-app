@@ -169,6 +169,24 @@ def startup_event():
         db.commit()
     except:
         db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE challans ADD COLUMN extra_charges FLOAT DEFAULT 0.0"))
+        db.commit()
+    except:
+        db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE challans ADD COLUMN extra_charge_reason VARCHAR DEFAULT ''"))
+        db.commit()
+    except:
+        db.rollback()
+
+    try:
+        db.execute(text("ALTER TABLE vendor_payments ADD COLUMN extra_charge_booked FLOAT DEFAULT 0.0"))
+        db.commit()
+    except:
+        db.rollback()
         
     users = [
         ("SuperAdmin", "Admin@123", "SuperAdmin"),
@@ -288,6 +306,9 @@ class VendorPaymentCreate(BaseModel):
     amount_paid: float
     payment_mode: str
     utr_no: Optional[str] = None
+    book_extra_charge: Optional[bool] = False
+    extra_charge_amount: Optional[float] = 0.0
+    extra_charge_reason: Optional[str] = "Halting / Detention Charges"
 
 class ExpenseUpdate(BaseModel):
     date: Optional[date] = None
@@ -668,7 +689,24 @@ def get_unpaid_challans(vendor_id: int, db: Session = Depends(get_db), user: mod
 
 @app.post("/api/vendor_payments")
 def create_vendor_payment(payment: VendorPaymentCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    db_payment = models.VendorPayment(**payment.dict())
+    extra_booked = 0.0
+    if payment.book_extra_charge and payment.challan_id and payment.extra_charge_amount and payment.extra_charge_amount > 0:
+        ch = db.query(models.Challan).filter(models.Challan.id == payment.challan_id).first()
+        if ch:
+            extra_booked = float(payment.extra_charge_amount)
+            ch.extra_charges = (ch.extra_charges or 0.0) + extra_booked
+            reason = payment.extra_charge_reason or "Halting / Detention Charges"
+            if ch.extra_charge_reason:
+                ch.extra_charge_reason = f"{ch.extra_charge_reason}, {reason}"
+            else:
+                ch.extra_charge_reason = reason
+            ch.net_payable = (ch.net_payable or 0.0) + extra_booked
+            db.commit()
+            db.refresh(ch)
+            
+    p_data = payment.dict(exclude={'book_extra_charge', 'extra_charge_amount', 'extra_charge_reason'})
+    p_data['extra_charge_booked'] = extra_booked
+    db_payment = models.VendorPayment(**p_data)
     db.add(db_payment)
     db.commit()
     db.refresh(db_payment)
@@ -681,6 +719,13 @@ def delete_vendor_payment(payment_id: int, db: Session = Depends(get_db), user: 
     payment = db.query(models.VendorPayment).filter(models.VendorPayment.id == payment_id).first()
     if not payment:
         raise HTTPException(status_code=404, detail="Vendor payment not found")
+    
+    if payment.extra_charge_booked and payment.extra_charge_booked > 0 and payment.challan_id:
+        ch = db.query(models.Challan).filter(models.Challan.id == payment.challan_id).first()
+        if ch:
+            ch.extra_charges = max(0.0, (ch.extra_charges or 0.0) - payment.extra_charge_booked)
+            ch.net_payable = max(0.0, (ch.net_payable or 0.0) - payment.extra_charge_booked)
+            
     db.delete(payment)
     db.commit()
     return {"message": "Vendor payment deleted successfully"}
@@ -904,6 +949,17 @@ def get_party_tally_ledger(party_id: int, db: Session = Depends(get_db), user: m
                 "debit": 0.0,
                 "credit": ch.total_freight
             })
+            # Explicit Extra Charge / Halting line (Credit to Vendor)
+            if ch.extra_charges and ch.extra_charges > 0:
+                reason = ch.extra_charge_reason or "Halting / Detention Charges"
+                rows.append({
+                    "date": ch.date.isoformat(),
+                    "vch_type": "Extra Charge",
+                    "vch_no": ch.challan_no,
+                    "particulars": f"By {reason} (Challan #{ch.challan_no})",
+                    "debit": 0.0,
+                    "credit": ch.extra_charges
+                })
             # Explicit TDS Deduction line (Debit)
             if ch.tds_amount and ch.tds_amount > 0:
                 tds_pct = int(round(ch.tds_rate * 100)) if ch.tds_rate else 1
@@ -1593,10 +1649,10 @@ def excel_challan_margin(db: Session = Depends(get_db), user: models.User = Depe
         total_rev = cust_freight + allocated_other_charges
         vendor_freight = ch.total_freight or 0.0
         trip_exp = db.query(func.sum(models.Expense.amount)).filter(models.Expense.challan_id == ch.id).scalar() or 0.0
-        extra_halting = db.query(func.sum(models.VendorPayment.amount_paid)).filter(
+        extra_halting = (ch.extra_charges or 0.0) + (db.query(func.sum(models.VendorPayment.amount_paid)).filter(
             models.VendorPayment.challan_id == ch.id,
             models.VendorPayment.payment_mode.in_(['Extra Charges / Halting Paid', 'Extra Trip Charge / Halting Paid'])
-        ).scalar() or 0.0
+        ).scalar() or 0.0)
         setoff = db.query(func.sum(models.VendorPayment.amount_paid)).filter(
             models.VendorPayment.challan_id == ch.id,
             models.VendorPayment.payment_mode.in_(['Setoff / Discount (Settled in Full)', 'Setoff / Discount'])
